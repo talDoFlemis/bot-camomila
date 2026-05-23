@@ -7,8 +7,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	whatsmeow "go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"modernc.org/sqlite"
@@ -124,8 +126,14 @@ func (a *Adapter) Start(ctx context.Context) error {
 		go func() {
 			for evt := range qrChan {
 				if evt.Event == "code" {
-					fmt.Println("Scan this QR code or paste into a QR generator:")
-					fmt.Println(evt.Code)
+					qrterminal.GenerateWithConfig(evt.Code, qrterminal.Config{
+						Level:     qrterminal.L,
+						Writer:    os.Stdout,
+						BlackChar: qrterminal.BLACK,
+						WhiteChar: qrterminal.WHITE,
+						QuietZone: 1,
+					})
+					fmt.Println("Or paste into a QR generator:", evt.Code)
 				}
 			}
 		}()
