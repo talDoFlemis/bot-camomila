@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	whatsmeow "go.mau.fi/whatsmeow"
@@ -141,7 +142,21 @@ func (a *Adapter) Start(ctx context.Context) error {
 		a.botJID = a.client.Store.ID.ToNonAD().String()
 	}
 
+	// Step 11: Log all groups the device is currently part of.
+	a.logJoinedGroups()
+
 	return nil
+}
+
+func (a *Adapter) logJoinedGroups() {
+	groups, err := a.client.GetJoinedGroups(context.Background())
+	if err != nil {
+		slog.Warn("could not fetch joined groups", "err", err)
+		return
+	}
+	for _, g := range groups {
+		slog.Info("joined group", "jid", g.JID.String(), "name", g.Name)
+	}
 }
 
 // Disconnect cleanly shuts down the WhatsApp client and closes the SQLite database.
