@@ -34,6 +34,7 @@ type Adapter struct {
 	cancel    context.CancelFunc // stored to signal shutdown from event handler (never call Disconnect from handler)
 	startTime time.Time          // recorded in New() before any Connect; used for HistorySync flood filter (D-07)
 	botJID    string             // bot's own JID in non-AD form; set after Connect() for quote-chain prevention
+	botLID    string             // bot's LID (@lid) used in mention MentionedJID on newer WhatsApp clients
 }
 
 // New returns an uninitialised Adapter. startTime is recorded here — before any Connect
@@ -137,10 +138,18 @@ func (a *Adapter) Start(ctx context.Context) error {
 		return fmt.Errorf("whatsmeow connect: %w", err)
 	}
 
-	// Step 10: Record the bot's own JID for quote-chain loop prevention.
+	// Step 10: Record the bot's own JID and LID for mention matching and quote-chain prevention.
+	// Newer WhatsApp clients send MentionedJID entries in @lid form; we must check both.
 	if a.client.Store.ID != nil {
 		a.botJID = a.client.Store.ID.ToNonAD().String()
 	}
+	if !a.client.Store.LID.IsEmpty() {
+		a.botLID = a.client.Store.LID.ToNonAD().String()
+	}
+	slog.Info("bot identity recorded",
+		"bot_jid", a.botJID,
+		"bot_lid", a.botLID,
+	)
 
 	// Step 11: Log all groups the device is currently part of.
 	a.logJoinedGroups()

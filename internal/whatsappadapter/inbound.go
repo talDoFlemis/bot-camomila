@@ -115,7 +115,7 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		QuotedBody:      quotedBody,
 		QuotedSenderJID: quotedSender,
 		Timestamp:       evt.Info.Timestamp,
-		MentionedBot:    isBotMentioned(evt.Message, a.botJID),
+		MentionedBot:    isBotMentioned(evt.Message, a.botJID, a.botLID),
 	}
 
 	// Run the pipeline with this listener's matchers.
@@ -181,10 +181,12 @@ func (a *Adapter) sendReply(evt *events.Message, answer string) {
 	)
 }
 
-// isBotMentioned returns true if botJID appears in the message's ContextInfo.MentionedJID list.
+// isBotMentioned returns true if any of the bot's known JIDs (phone-based @s.whatsapp.net
+// or LID-based @lid) appears in the message's ContextInfo.MentionedJID list.
+// Newer WhatsApp clients send mentions in @lid form; older ones use @s.whatsapp.net.
 // Mentions only exist in ExtendedTextMessage — plain Conversation messages never carry them.
-func isBotMentioned(m *waE2E.Message, botJID string) bool {
-	if m == nil || botJID == "" {
+func isBotMentioned(m *waE2E.Message, botJID, botLID string) bool {
+	if m == nil {
 		return false
 	}
 	ext := m.GetExtendedTextMessage()
@@ -196,7 +198,7 @@ func isBotMentioned(m *waE2E.Message, botJID string) bool {
 		return false
 	}
 	for _, jid := range ci.GetMentionedJID() {
-		if jid == botJID {
+		if (botJID != "" && jid == botJID) || (botLID != "" && jid == botLID) {
 			return true
 		}
 	}
