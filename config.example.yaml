@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=./config.schema.json
+
+log:
+  level: info
+
+listeners:
+  - group_jid: "asdfasdfasdfasdf@g.us"
+    owner_jids: ["558599999999@s.whatsapp.net"]
+    matchers:
+      - mention
+      - little
+
+  - group_jid: "qwerqwerqwerqwer@g.us"
+    owner_jids: ["5585999999@s.whatsapp.net"]
+    matchers:
+      - mention
+
+matchers:
+  - name: little
+    levenshtein:
+      words: ["fouda", "hello", "wilson"]
+      distance: 1
+      cluster: little
+      cooldown_sec: 5
+  - name: mention
+    mention:
+      cluster: mention
+      cooldown_sec: 5
+
+limits:
+  user_cooldown_sec: 5
+
+clusters:
+  - name: little
+    answers:
+      - "testing {REPLIED_USER}"
+      - "testing {MATCHED_WORD} asdfasdf sefaz"
+      - "testing gabriel {REPLIED_USER}"
+
+  - name: mention
+    answers:
+      - "quem me marcar é viado"
+
+db:
+  path: "./session.sqlite"
