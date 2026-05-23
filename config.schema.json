@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/taldoflemis/bot-camomila/config.schema.json",
+  "title": "bot-camomila config",
+  "description": "Configuration for the bot-camomila WhatsApp de-escalation bot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "matchers", "answers_cluster", "db"],
+  "properties": {
+    "scope": {
+      "type": "object",
+      "description": "Restricts which group and which owners the bot responds to.",
+      "additionalProperties": false,
+      "required": ["group_jid"],
+      "properties": {
+        "group_jid": {
+          "type": "string",
+          "description": "WhatsApp group JID (must end in @g.us). The bot only processes messages from this group.",
+          "examples": ["120363428452727309@g.us"]
+        },
+        "owner_jids": {
+          "type": "array",
+          "description": "List of WhatsApp JIDs allowed to send owner commands (!pause / !resume).",
+          "items": {
+            "type": "string",
+            "examples": ["558591074044@s.whatsapp.net"]
+          },
+          "default": []
+        }
+      }
+    },
+    "matchers": {
+      "type": "array",
+      "description": "Ordered list of fuzzy-match rules. The first matcher to fire wins.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "words", "distance", "cluster"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique identifier for this matcher (used in logs)."
+          },
+          "words": {
+            "type": "array",
+            "description": "Keywords to match against incoming message tokens (NFC-normalised, case-insensitive). Distance 1 requires ≥5-rune words; distance 2 requires ≥8-rune words.",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "distance": {
+            "type": "integer",
+            "description": "Maximum Levenshtein distance for a match. 0 = exact, 1 = one typo (words ≥5 runes), 2 = two typos (words ≥8 runes).",
+            "enum": [0, 1, 2]
+          },
+          "cluster": {
+            "type": "string",
+            "description": "Name of the answers_cluster whose answers are sent when this matcher fires."
+          },
+          "cooldown_sec": {
+            "type": "integer",
+            "description": "Per-matcher cooldown in seconds. Bot will not fire this matcher again until the cooldown expires. Default: 300 (5 min).",
+            "minimum": 0,
+            "default": 300
+          }
+        }
+      }
+    },
+    "answers_cluster": {
+      "type": "array",
+      "description": "Named pools of reply strings. Matchers reference a cluster by name; one answer is chosen at random.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "answers"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique cluster name referenced by matchers."
+          },
+          "answers": {
+            "type": "array",
+            "description": "Reply strings. Supports {REPLIED_USER} (sender mention) and {MATCHED_WORD} (the word that triggered the match) placeholders.",
+            "items": { "type": "string" },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "description": "Behavioral rate and quiet-hours limits.",
+      "additionalProperties": false,
+      "properties": {
+        "quiet_hours": {
+          "type": "object",
+          "description": "Time window during which the bot stays silent.",
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "string",
+              "description": "Start of quiet window in HH:MM format (24-hour).",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "examples": ["22:00"]
+            },
+            "end": {
+              "type": "string",
+              "description": "End of quiet window in HH:MM format (24-hour).",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "examples": ["08:00"]
+            },
+            "timezone": {
+              "type": "string",
+              "description": "IANA timezone name for quiet hours evaluation. Never uses local time.",
+              "examples": ["America/Sao_Paulo", "UTC"]
+            }
+          }
+        },
+        "rate_cap": {
+          "type": "object",
+          "description": "Maximum number of replies the bot can send per time window.",
+          "additionalProperties": false,
+          "properties": {
+            "per_min": {
+              "type": "integer",
+              "description": "Maximum replies per minute (0 = unlimited).",
+              "minimum": 0,
+              "default": 0
+            },
+            "per_hour": {
+              "type": "integer",
+              "description": "Maximum replies per hour (0 = unlimited).",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        },
+        "user_cooldown_sec": {
+          "type": "integer",
+          "description": "Global per-user cooldown in seconds. Bot ignores further messages from a user until cooldown expires. Default: 900 (15 min).",
+          "minimum": 0,
+          "default": 900
+        }
+      }
+    },
+    "log": {
+      "type": "object",
+      "description": "Log output settings. Hot-reloaded — changes take effect without restart.",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Log format. 'json' for structured production logs; 'text' for human-readable dev logs; '' auto-detects via isatty (text if TTY, json otherwise).",
+          "enum": ["json", "text", ""],
+          "default": ""
+        },
+        "level": {
+          "type": "string",
+          "description": "Minimum log level. Hot-reloaded: changing this in a running bot takes effect immediately. Empty string keeps the current level (debug for TTY, info for non-TTY).",
+          "enum": ["debug", "info", "warn", "error", ""],
+          "default": ""
+        }
+      }
+    },
+    "db": {
+      "type": "object",
+      "description": "SQLite session database settings.",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the SQLite file used to persist the WhatsApp multi-device session. Created on first run.",
+          "examples": ["./session.sqlite", "/data/session.sqlite"]
+        }
+      }
+    }
+  }
+}
