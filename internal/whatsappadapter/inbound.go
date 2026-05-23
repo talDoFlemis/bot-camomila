@@ -11,6 +11,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/taldoflemis/bot-camomila/internal/config"
 	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 )
 
@@ -71,13 +72,13 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		return
 	}
 
-	// Gate 1 — group JID scope filter (SCOPE-01).
-	// Only process messages from the configured group; drop everything else silently.
-	if evt.Info.Chat.String() != snap.Scope.GroupJID {
-		slog.Debug("message dropped: wrong group",
+	// Gate 1 — listener lookup (SCOPE-01).
+	// Only process messages from a configured group; drop everything else silently.
+	listener := findListener(snap.Listeners, evt.Info.Chat.String())
+	if listener == nil {
+		slog.Debug("message dropped: group not configured",
 			"event", "scope_drop",
 			"group_jid", evt.Info.Chat.String(),
-			"expected", snap.Scope.GroupJID,
 		)
 		return
 	}
@@ -116,8 +117,8 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		Timestamp:       evt.Info.Timestamp,
 	}
 
-	// Run the pipeline.
-	decision := a.pipeline.Handle(msg, snap)
+	// Run the pipeline with this listener's matchers.
+	decision := a.pipeline.Handle(msg, snap, listener.Matchers)
 
 	// Log every dispatch decision (OBSERV-02).
 	slog.Info("dispatch decision",
@@ -177,6 +178,16 @@ func (a *Adapter) sendReply(evt *events.Message, answer string) {
 		"msg_id", evt.Info.ID,
 		"jitter_ms", jitter.Milliseconds(),
 	)
+}
+
+// findListener returns the ResolvedListener for the given group JID, or nil if not configured.
+func findListener(listeners []config.ResolvedListener, groupJID string) *config.ResolvedListener {
+	for i := range listeners {
+		if listeners[i].GroupJID == groupJID {
+			return &listeners[i]
+		}
+	}
+	return nil
 }
 
 // extractText returns the plain-text content of a proto message, or "" if the message

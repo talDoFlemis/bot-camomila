@@ -15,7 +15,7 @@ import (
 // Load reads and validates the YAML config at path, returning an immutable Snapshot.
 // It uses strict decoding (unknown fields are rejected) and runs full load-time validation
 // including JID parsing, timezone lookup, distance/word-length constraints, cluster resolution,
-// and self-loop guard.
+// and listener/matcher cross-reference checks.
 func Load(path string) (*Snapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -33,41 +33,13 @@ func Load(path string) (*Snapshot, error) {
 
 // validate applies all load-time validation checks and returns the resolved Snapshot.
 // Checks are performed in a defined order:
-//  1. group_jid — must parse as a group JID (server == "g.us")
-//  2. owner_jids — each must parse as a valid JID
-//  3. timezone — if non-empty, must resolve via time.LoadLocation (never time.Local)
-//  4. cluster resolution — each matcher's cluster ref must resolve; no duplicates allowed
-//  5. distance min-length — distance 1 → word ≥5 runes; distance 2 → word ≥8 runes
+//  1. clusters — build map, detect duplicate names
+//  2. matchers — word-length/distance constraints, cluster reference resolution
+//  3. listeners — require ≥1, validate group_jid/owner_jids, resolve matcher references
+//  4. timezone — if non-empty, must resolve via time.LoadLocation (never time.Local)
+//  5. log level — if non-empty, must be a known slog level
 func validate(cfg Config) (*Snapshot, error) {
-	// CHECK 1 — group_jid
-	if cfg.Scope.GroupJID != "" {
-		jid, err := types.ParseJID(cfg.Scope.GroupJID)
-		if err != nil {
-			return nil, fmt.Errorf("group_jid %q is invalid: %w", cfg.Scope.GroupJID, err)
-		}
-		if jid.Server != types.GroupServer {
-			return nil, fmt.Errorf("group_jid must be a group JID (got server %q)", jid.Server)
-		}
-	}
-
-	// CHECK 2 — owner_jids
-	for i, raw := range cfg.Scope.OwnerJIDs {
-		if _, err := types.ParseJID(raw); err != nil {
-			return nil, fmt.Errorf("owner_jids[%d] %q is invalid: %w", i, raw, err)
-		}
-	}
-
-	// CHECK 3 — timezone
-	var loc *time.Location
-	if cfg.Limits.QuietHours.Timezone != "" {
-		var err error
-		loc, err = time.LoadLocation(cfg.Limits.QuietHours.Timezone)
-		if err != nil {
-			return nil, fmt.Errorf("limits.quiet_hours.timezone %q is invalid: %w", cfg.Limits.QuietHours.Timezone, err)
-		}
-	}
-
-	// CHECK 4 — cluster resolution (build map, detect duplicates)
+	// CHECK 1 — cluster map (detect duplicates)
 	clusterMap := make(map[string][]string, len(cfg.AnswersClusters))
 	for _, ac := range cfg.AnswersClusters {
 		if _, exists := clusterMap[ac.Name]; exists {
@@ -76,10 +48,15 @@ func validate(cfg Config) (*Snapshot, error) {
 		clusterMap[ac.Name] = ac.Answers
 	}
 
-	// CHECK 5 — distance min-length and CHECK 6 — self-loop guard (per matcher)
-	resolved := make([]ResolvedMatcher, 0, len(cfg.Matchers))
+	// CHECK 2 — resolve global matchers (word-length constraints + cluster refs)
+	matcherNames := make(map[string]struct{}, len(cfg.Matchers))
+	globalMatchers := make(map[string]ResolvedMatcher, len(cfg.Matchers))
 	for _, m := range cfg.Matchers {
-		// CHECK 5: enforce word-length minimums for each word
+		if _, dup := matcherNames[m.Name]; dup {
+			return nil, fmt.Errorf("matchers name %q appears more than once", m.Name)
+		}
+		matcherNames[m.Name] = struct{}{}
+
 		for _, word := range m.Words {
 			runeCount := utf8.RuneCountInString(word)
 			switch m.Distance {
@@ -94,22 +71,76 @@ func validate(cfg Config) (*Snapshot, error) {
 			}
 		}
 
-		// CHECK 4 (continued): resolve cluster reference
 		answers, ok := clusterMap[m.Cluster]
 		if !ok {
 			return nil, fmt.Errorf("matcher %q references unknown cluster %q", m.Name, m.Cluster)
 		}
 
-		resolved = append(resolved, ResolvedMatcher{
+		globalMatchers[m.Name] = ResolvedMatcher{
 			Name:             m.Name,
 			Words:            m.Words,
 			Distance:         m.Distance,
 			Answers:          answers,
 			CooldownDuration: resolveCooldown(m.CooldownSec, 300),
+		}
+	}
+
+	// CHECK 3 — listeners
+	if len(cfg.Listeners) == 0 {
+		return nil, fmt.Errorf("listeners: at least one listener is required")
+	}
+
+	resolvedListeners := make([]ResolvedListener, 0, len(cfg.Listeners))
+	for i, l := range cfg.Listeners {
+		// group_jid must parse as a group JID
+		jid, err := types.ParseJID(l.GroupJID)
+		if err != nil {
+			return nil, fmt.Errorf("listeners[%d].group_jid %q is invalid: %w", i, l.GroupJID, err)
+		}
+		if jid.Server != types.GroupServer {
+			return nil, fmt.Errorf("listeners[%d].group_jid must be a group JID (got server %q)", i, jid.Server)
+		}
+
+		// owner_jids must each parse as valid JIDs
+		for j, raw := range l.OwnerJIDs {
+			if _, err := types.ParseJID(raw); err != nil {
+				return nil, fmt.Errorf("listeners[%d].owner_jids[%d] %q is invalid: %w", i, j, raw, err)
+			}
+		}
+
+		// at least one matcher reference required
+		if len(l.Matchers) == 0 {
+			return nil, fmt.Errorf("listeners[%d] (group %q): at least one matcher is required", i, l.GroupJID)
+		}
+
+		// resolve matcher references
+		listenerMatchers := make([]ResolvedMatcher, 0, len(l.Matchers))
+		for _, mName := range l.Matchers {
+			rm, ok := globalMatchers[mName]
+			if !ok {
+				return nil, fmt.Errorf("listeners[%d] (group %q): references unknown matcher %q", i, l.GroupJID, mName)
+			}
+			listenerMatchers = append(listenerMatchers, rm)
+		}
+
+		resolvedListeners = append(resolvedListeners, ResolvedListener{
+			GroupJID:  l.GroupJID,
+			OwnerJIDs: l.OwnerJIDs,
+			Matchers:  listenerMatchers,
 		})
 	}
 
-	// CHECK 7 — log level
+	// CHECK 4 — timezone
+	var loc *time.Location
+	if cfg.Limits.QuietHours.Timezone != "" {
+		var err error
+		loc, err = time.LoadLocation(cfg.Limits.QuietHours.Timezone)
+		if err != nil {
+			return nil, fmt.Errorf("limits.quiet_hours.timezone %q is invalid: %w", cfg.Limits.QuietHours.Timezone, err)
+		}
+	}
+
+	// CHECK 5 — log level
 	var logLevel *slog.Level
 	if cfg.Log.Level != "" {
 		lvl, err := parseLogLevel(cfg.Log.Level)
@@ -120,11 +151,10 @@ func validate(cfg Config) (*Snapshot, error) {
 	}
 
 	return &Snapshot{
-		Scope:                cfg.Scope,
+		Listeners:            resolvedListeners,
 		Limits:               cfg.Limits,
 		Log:                  cfg.Log,
 		DB:                   cfg.DB,
-		Matchers:             resolved,
 		Location:             loc,
 		UserCooldownDuration: resolveCooldown(cfg.Limits.UserCooldownSec, 900),
 		LogLevel:             logLevel,

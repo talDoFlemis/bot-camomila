@@ -5,33 +5,43 @@
   "description": "Configuration for the bot-camomila WhatsApp de-escalation bot.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["scope", "matchers", "clusters", "db"],
+  "required": ["listeners", "matchers", "clusters", "db"],
   "properties": {
-    "scope": {
-      "type": "object",
-      "description": "Restricts which group and which owners the bot responds to.",
-      "additionalProperties": false,
-      "required": ["group_jid"],
-      "properties": {
-        "group_jid": {
-          "type": "string",
-          "description": "WhatsApp group JID (must end in @g.us). The bot only processes messages from this group.",
-          "examples": ["120363428452727309@g.us"]
-        },
-        "owner_jids": {
-          "type": "array",
-          "description": "List of WhatsApp JIDs allowed to send owner commands (!pause / !resume).",
-          "items": {
+    "listeners": {
+      "type": "array",
+      "description": "One entry per WhatsApp group. Each listener binds a group JID to a set of named matchers. At least one listener is required.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group_jid", "matchers"],
+        "properties": {
+          "group_jid": {
             "type": "string",
-            "examples": ["558591074044@s.whatsapp.net"]
+            "description": "WhatsApp group JID (must end in @g.us). The bot only processes messages from this group.",
+            "examples": ["120363428452727309@g.us"]
           },
-          "default": []
+          "owner_jids": {
+            "type": "array",
+            "description": "List of WhatsApp JIDs allowed to send owner commands (!pause / !resume).",
+            "items": {
+              "type": "string",
+              "examples": ["558591074044@s.whatsapp.net"]
+            },
+            "default": []
+          },
+          "matchers": {
+            "type": "array",
+            "description": "Ordered list of matcher names (must reference a name defined in the top-level matchers array). First match wins. At least one required.",
+            "items": { "type": "string" },
+            "minItems": 1
+          }
         }
       }
     },
     "matchers": {
       "type": "array",
-      "description": "Ordered list of fuzzy-match rules. The first matcher to fire wins.",
+      "description": "Global named fuzzy-match rules. Referenced by name in listener.matchers. Cluster must reference a name defined in the top-level clusters array.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -39,7 +49,7 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Unique identifier for this matcher (used in logs)."
+            "description": "Unique identifier for this matcher (used in logs and listener references)."
           },
           "words": {
             "type": "array",
@@ -54,7 +64,7 @@
           },
           "cluster": {
             "type": "string",
-            "description": "Name of the clusters whose answers are sent when this matcher fires."
+            "description": "Name of the cluster whose answers are sent when this matcher fires. Must match a name defined in the top-level clusters array."
           },
           "cooldown_sec": {
             "type": "integer",

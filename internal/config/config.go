@@ -9,12 +9,12 @@ import (
 
 // Config is the raw YAML-parsed configuration. Fields map directly to config.yaml sections.
 type Config struct {
-	AnswersClusters []Cluster       `yaml:"clusters"`
-	Matchers        []MatcherConfig `yaml:"matchers"`
-	Scope           ScopeConfig     `yaml:"scope"`
-	Limits          LimitsConfig    `yaml:"limits"`
-	Log             LogConfig       `yaml:"log"`
-	DB              DBConfig        `yaml:"db"`
+	AnswersClusters []Cluster        `yaml:"clusters"`
+	Matchers        []MatcherConfig  `yaml:"matchers"`
+	Listeners       []ListenerConfig `yaml:"listeners"`
+	Limits          LimitsConfig     `yaml:"limits"`
+	Log             LogConfig        `yaml:"log"`
+	DB              DBConfig         `yaml:"db"`
 }
 
 // Cluster is a named pool of answer strings. Matchers reference clusters by name.
@@ -32,10 +32,11 @@ type MatcherConfig struct {
 	CooldownSec int      `yaml:"cooldown_sec"` // per-matcher cooldown in seconds (default 300 = 5 min)
 }
 
-// ScopeConfig restricts which group and which owners the bot responds to.
-type ScopeConfig struct {
+// ListenerConfig binds a WhatsApp group to a set of matchers.
+type ListenerConfig struct {
 	GroupJID  string   `yaml:"group_jid"`
 	OwnerJIDs []string `yaml:"owner_jids"`
+	Matchers  []string `yaml:"matchers"` // ordered list of MatcherConfig.Name references
 }
 
 // LimitsConfig holds behavioral rate and quiet-hours limits.
@@ -69,19 +70,24 @@ type DBConfig struct {
 	Path string `yaml:"path"` // e.g. "./session.sqlite"
 }
 
-// Snapshot is the immutable, resolved form of Config. Cluster references in
-// MatcherConfig are resolved into answer slices. Callers must hold this pointer
-// for the full duration of one message-handling call and must not call Get
-// repeatedly within one call.
+// Snapshot is the immutable, resolved form of Config. Cluster and matcher references are
+// fully resolved per listener. Callers must hold this pointer for the full duration of one
+// message-handling call and must not call Get repeatedly within one call.
 type Snapshot struct {
-	Scope                ScopeConfig
+	Listeners            []ResolvedListener
 	Limits               LimitsConfig
 	Log                  LogConfig
 	DB                   DBConfig
-	Matchers             []ResolvedMatcher
 	Location             *time.Location // resolved from QuietHours.Timezone (nil if not configured)
 	UserCooldownDuration time.Duration  // resolved from LimitsConfig.UserCooldownSec
 	LogLevel             *slog.Level    // nil = keep current level; set when log.level is configured
+}
+
+// ResolvedListener is a listener with its matchers fully resolved.
+type ResolvedListener struct {
+	GroupJID  string
+	OwnerJIDs []string
+	Matchers  []ResolvedMatcher
 }
 
 // ResolvedMatcher is a matcher with its answer cluster already resolved.

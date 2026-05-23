@@ -49,8 +49,9 @@ func New(ks *killswitch.Switch, cd *cooldown.Tracker, rl *RateLimiter, clock fun
 }
 
 // Handle runs the full gate chain on a message and returns a Decision.
+// matchers is the resolved matcher list for the listener that received this message.
 // The gate order is: kill switch → quiet hours → match → cooldown → rate cap → pick answer.
-func (p *Pipeline) Handle(msg Message, snap *config.Snapshot) Decision {
+func (p *Pipeline) Handle(msg Message, snap *config.Snapshot, matchers []config.ResolvedMatcher) Decision {
 	now := p.clock()
 
 	// Gate 1 — Kill switch.
@@ -65,13 +66,13 @@ func (p *Pipeline) Handle(msg Message, snap *config.Snapshot) Decision {
 
 	// Gate 3 — Match (body first, then quoted text if no body match).
 	normalizedBody := matcher.Normalize(msg.Text)
-	result := matcher.Match(normalizedBody, snap.Matchers)
+	result := matcher.Match(normalizedBody, matchers)
 
 	if result == nil && msg.QuotedBody != "" && msg.QuotedSenderJID != "" {
 		// Quoted text is eligible for matching. QuotedSenderJID == "" means the
 		// quoted author is the bot itself (quote-chain loop prevention).
 		normalizedQuoted := matcher.Normalize(msg.QuotedBody)
-		result = matcher.Match(normalizedQuoted, snap.Matchers)
+		result = matcher.Match(normalizedQuoted, matchers)
 	}
 
 	if result == nil {
@@ -80,9 +81,9 @@ func (p *Pipeline) Handle(msg Message, snap *config.Snapshot) Decision {
 
 	// Look up the matched ResolvedMatcher to get its CooldownDuration.
 	var matcherCooldown time.Duration
-	for i := range snap.Matchers {
-		if snap.Matchers[i].Name == result.MatcherName {
-			matcherCooldown = snap.Matchers[i].CooldownDuration
+	for i := range matchers {
+		if matchers[i].Name == result.MatcherName {
+			matcherCooldown = matchers[i].CooldownDuration
 			break
 		}
 	}
@@ -98,7 +99,7 @@ func (p *Pipeline) Handle(msg Message, snap *config.Snapshot) Decision {
 	}
 
 	// All gates passed — pick a random answer and substitute variables.
-	matchedMatcher := findMatcher(snap.Matchers, result.MatcherName)
+	matchedMatcher := findMatcher(matchers, result.MatcherName)
 	answer := matchedMatcher.Answers[p.rng.IntN(len(matchedMatcher.Answers))]
 	answer = substituteVars(answer, result.MatchedWord, msg.SenderPushName)
 

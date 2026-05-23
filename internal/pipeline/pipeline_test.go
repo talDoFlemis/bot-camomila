@@ -11,25 +11,29 @@ import (
 	"github.com/taldoflemis/bot-camomila/internal/killswitch"
 )
 
-// testSnap returns a config.Snapshot with one matcher and sensible defaults.
+// testMatchers returns the two standard test matchers.
+func testMatchers() []config.ResolvedMatcher {
+	return []config.ResolvedMatcher{
+		{
+			Name:             "tax",
+			Words:            []string{"sefaz"},
+			Distance:         1,
+			Answers:          []string{"calma, vai dar certo!"},
+			CooldownDuration: 5 * time.Minute,
+		},
+		{
+			Name:             "traffic",
+			Words:            []string{"detran"},
+			Distance:         0,
+			Answers:          []string{"respira fundo, {REPLIED_USER}"},
+			CooldownDuration: 5 * time.Minute,
+		},
+	}
+}
+
+// testSnap returns a config.Snapshot with sensible defaults.
 func testSnap() *config.Snapshot {
 	return &config.Snapshot{
-		Matchers: []config.ResolvedMatcher{
-			{
-				Name:             "tax",
-				Words:            []string{"sefaz"},
-				Distance:         1,
-				Answers:          []string{"calma, vai dar certo!"},
-				CooldownDuration: 5 * time.Minute,
-			},
-			{
-				Name:             "traffic",
-				Words:            []string{"detran"},
-				Distance:         0,
-				Answers:          []string{"respira fundo, {REPLIED_USER}"},
-				CooldownDuration: 5 * time.Minute,
-			},
-		},
 		Limits: config.LimitsConfig{
 			QuietHours: config.QuietHoursConfig{
 				Start:    "22:00",
@@ -73,7 +77,7 @@ func TestHandle_KillSwitchDrops(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil // disable quiet hours for this test
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.False(t, d.Reply)
 	assert.Equal(t, "kill_switch", d.DropReason)
 }
@@ -87,7 +91,7 @@ func TestHandle_QuietHoursDrops(t *testing.T) {
 	msg := Message{Text: "sefaz", SenderJID: "user@s.whatsapp.net"}
 	snap := testSnap()
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.False(t, d.Reply)
 	assert.Equal(t, "quiet_hours", d.DropReason)
 }
@@ -100,7 +104,7 @@ func TestHandle_NoMatchDrops(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.False(t, d.Reply)
 	assert.Equal(t, "no_match", d.DropReason)
 }
@@ -113,7 +117,7 @@ func TestHandle_MatchFires(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.True(t, d.Reply)
 	assert.Equal(t, "tax", d.MatcherName)
 	assert.NotEmpty(t, d.Answer)
@@ -128,11 +132,11 @@ func TestHandle_CooldownDrops(t *testing.T) {
 	snap.Location = nil
 
 	// First call fires.
-	d1 := pipe.Handle(msg, snap)
+	d1 := pipe.Handle(msg, snap, testMatchers())
 	assert.True(t, d1.Reply)
 
 	// Second call (same matcher + user, same time) should be blocked by cooldown.
-	d2 := pipe.Handle(msg, snap)
+	d2 := pipe.Handle(msg, snap, testMatchers())
 	assert.False(t, d2.Reply)
 	assert.Equal(t, "cooldown", d2.DropReason)
 }
@@ -145,20 +149,21 @@ func TestHandle_RateCapDrops(t *testing.T) {
 	snap.Location = nil
 	snap.Limits.RateCap.PerMin = 2
 	snap.Limits.RateCap.PerHour = 100
-	// Set per-matcher cooldown very low so it doesn't interfere.
-	snap.Matchers[0].CooldownDuration = 0
 	snap.UserCooldownDuration = 0
+
+	matchers := testMatchers()
+	matchers[0].CooldownDuration = 0 // disable per-matcher cooldown so rate cap is the only gate
 
 	// Fire perMin times.
 	for i := 0; i < 2; i++ {
 		msg := Message{Text: "sefaz", SenderJID: "user" + string(rune('A'+i)) + "@s.whatsapp.net"}
-		d := pipe.Handle(msg, snap)
+		d := pipe.Handle(msg, snap, matchers)
 		assert.True(t, d.Reply, "fire %d should succeed", i)
 	}
 
 	// Next one should be rate-capped.
 	msg := Message{Text: "sefaz", SenderJID: "userZ@s.whatsapp.net"}
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, matchers)
 	assert.False(t, d.Reply)
 	assert.Equal(t, "rate_cap", d.DropReason)
 }
@@ -176,7 +181,7 @@ func TestHandle_QuotedTextMatch(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.True(t, d.Reply)
 	assert.Equal(t, "tax", d.MatcherName)
 }
@@ -194,7 +199,7 @@ func TestHandle_QuotedSelfSkipped(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.False(t, d.Reply)
 	assert.Equal(t, "no_match", d.DropReason)
 }
@@ -211,7 +216,7 @@ func TestHandle_VariableSubstitution(t *testing.T) {
 	snap := testSnap()
 	snap.Location = nil
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	assert.True(t, d.Reply)
 	assert.Equal(t, "traffic", d.MatcherName)
 	assert.Contains(t, d.Answer, "Maria")
@@ -227,7 +232,7 @@ func TestHandle_GateOrder(t *testing.T) {
 	msg := Message{Text: "sefaz", SenderJID: "user@s.whatsapp.net"}
 	snap := testSnap()
 
-	d := pipe.Handle(msg, snap)
+	d := pipe.Handle(msg, snap, testMatchers())
 	// Should be "kill_switch", not "quiet_hours" — proving gate order.
 	assert.Equal(t, "kill_switch", d.DropReason)
 }
