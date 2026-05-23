@@ -1,3 +1,8 @@
+---
+milestone: v1.0
+updated: "2026-05-23T11:30:00Z"
+---
+
 # bot-camomila — Requirements
 
 Scope: v1 = the minimum bot that can be safely left running in one WhatsApp group. Categories follow the research convergence (Session, Config, Scope, Match, Reply, Cooldown, Quiet, Owner, Deploy, Observ).
