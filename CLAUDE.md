@@ -4,7 +4,7 @@
 
 WhatsApp de-escalation bot for one group chat. Fuzzy-matches keywords (Levenshtein distance) in messages and quoted text, replies with a randomly-picked calming answer threaded to the triggering message. Named for chamomile tea.
 
-Planning artifacts: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`.
+Planning artifacts: `.gsd/SPEC.md`, `.gsd/REQUIREMENTS.md`, `.gsd/ROADMAP.md`.
 
 ## Tech Stack
 
@@ -72,11 +72,11 @@ Multi-stage: `golang:1.26.3-alpine` builder → `gcr.io/distroless/static-debian
 Build flags: `CGO_ENABLED=0 -trimpath -ldflags="-s -w"`. Target image ≤25 MB.
 distroless/static-debian13:nonroot includes tzdata, ca-certs, nonroot uid 65532.
 
-## GSD Workflow
+## GSD Workflow (Antigravity)
 
+- Framework: GSD for Antigravity (`.gsd/` directory)
 - Mode: YOLO
 - Granularity: coarse (4 phases)
-- Parallelization: enabled
 - Git tracking: yes
 
-Current phase: 1 (Session & Config Foundations). Run `/gsd:discuss-phase 1` to start.
+Current phase: 2 (Matcher Pipeline & Safe Dispatch). Run `/plan 2` to start planning.

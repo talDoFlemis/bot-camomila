@@ -33,3 +33,8 @@ go.work.sum
 #
 config.yaml
 session.sqlite*
+
+# GSD session-specific files
+.gsd/STATE.md
+.gsd/JOURNAL.md
+.gsd/TODO.md
