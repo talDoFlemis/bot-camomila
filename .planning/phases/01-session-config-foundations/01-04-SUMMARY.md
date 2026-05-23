@@ -3,41 +3,59 @@ phase: 01-session-config-foundations
 plan: "04"
 subsystem: app-wiring
 tags: [composition-root, wiring, graceful-shutdown, config, whatsappadapter]
-dependency_graph:
-  requires:
-    - 01-02 (config package: Load, Store, Watcher)
-    - 01-03 (whatsappadapter: New, Start, Disconnect)
-  provides:
-    - app.Run() composition root
-    - complete Phase 1 walking skeleton
-  affects:
-    - cmd/bot/main.go (dead-code removal)
-    - internal/app/app.go (full implementation)
-tech_stack:
+
+requires:
+  - phase: 01-02
+    provides: config.Load, config.NewStore, config.NewWatcher — atomic snapshot with fsnotify hot-reload
+  - phase: 01-03
+    provides: whatsappadapter.New, adapter.Start, adapter.Disconnect — WhatsApp lifecycle and event gating
+provides:
+  - app.Run() composition root wiring all subsystems into a runnable bot
+  - Graceful shutdown sequence: adapter.Disconnect() after ctx.Done() within 10s
+  - Operator-verified Phase 1 walking skeleton (all 7 verification steps passed)
+affects: [02-matcher-pipeline, 03-owner-commands, 04-docker-packaging]
+
+tech-stack:
   added: []
   patterns:
-    - atomic config store (load-once per handler call)
-    - goroutine-wrapped watcher with error logging
-    - graceful shutdown via ctx.Done then Disconnect
-key_files:
+    - "Composition root: app.Run() wires all subsystems; main.go handles only slog + flags + signal"
+    - "Config load-first: app.Run() fails fast on initial config error before starting any subsystem"
+    - "Shutdown ordering: <-ctx.Done() → adapter.Disconnect() → db.Close() (never from event handler)"
+
+key-files:
   created: []
   modified:
     - internal/app/app.go
     - cmd/bot/main.go
-decisions:
+
+key-decisions:
   - "app.Run() blocks on ctx.Done() before calling adapter.Disconnect() — never from event handler (deadlock prevention)"
   - "startTime parameter logged at app level; adapter records its own time.Now() in New()"
-metrics:
-  duration: "~5 minutes"
-  completed: "2026-05-23"
-  tasks_completed: 1
-  tasks_total: 2
-  files_changed: 2
+
+requirements-completed:
+  - SESSION-01
+  - SESSION-02
+  - SESSION-03
+  - SESSION-04
+  - SESSION-05
+  - CONFIG-01
+  - CONFIG-02
+  - CONFIG-03
+  - CONFIG-04
+  - CONFIG-05
+  - SCOPE-01
+  - SCOPE-02
+  - SCOPE-03
+  - OBSERV-01
+  - OBSERV-03
+
+duration: "~92 min (including operator verification)"
+completed: "2026-05-23"
 ---
 
 # Phase 1 Plan 04: Entrypoint Wiring Summary
 
-**One-liner:** app.Run() wires config.Load + atomic Store + fsnotify Watcher + whatsappadapter into a graceful-shutdown composition root.
+**app.Run() composition root wiring config hot-reload, whatsappadapter, and graceful shutdown — Phase 1 walking skeleton operator-verified across all 7 steps**
 
 ## What Was Built
 
@@ -69,9 +87,17 @@ metrics:
 |------|-------------|--------|-------|
 | 1 | Implement app.Run() composition root | b87b365 | internal/app/app.go, cmd/bot/main.go |
 
-## Checkpoint Task
+## Operator Verification
 
-Task 2 is `type="checkpoint:human-verify"` — requires operator to build the binary, scan the QR code, and verify all 7 steps of the walking skeleton (session persistence, message gating, graceful shutdown, hot-reload).
+Task 2 was `type="checkpoint:human-verify"`. Operator verified all 7 steps and approved:
+
+1. Binary builds with `go build -o bot ./cmd/bot/` — passed
+2. First launch prints QR code; scan with phone — passed
+3. Session persists: restart without QR — passed
+4. Group messages produce structured `"message received"` log — passed
+5. Non-group messages and self-sent messages are silently dropped — passed
+6. `SIGTERM` produces clean shutdown within 10s, exit code 0 — passed
+7. Config hot-reload fires within ~500ms; invalid reload keeps prior snapshot with WARN — passed
 
 ## Threat Model Coverage
 
