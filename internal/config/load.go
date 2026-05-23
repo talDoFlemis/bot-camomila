@@ -72,7 +72,7 @@ func validate(cfg Config) (*Snapshot, error) {
 	clusterMap := make(map[string][]string, len(cfg.AnswersClusters))
 	for _, ac := range cfg.AnswersClusters {
 		if _, exists := clusterMap[ac.Name]; exists {
-			return nil, fmt.Errorf("answers_cluster name %q appears more than once (ambiguous reference)", ac.Name)
+			return nil, fmt.Errorf("clusters name %q appears more than once (ambiguous reference)", ac.Name)
 		}
 		clusterMap[ac.Name] = ac.Answers
 	}

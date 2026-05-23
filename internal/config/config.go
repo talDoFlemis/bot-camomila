@@ -9,16 +9,16 @@ import (
 
 // Config is the raw YAML-parsed configuration. Fields map directly to config.yaml sections.
 type Config struct {
-	AnswersClusters []AnswersCluster `yaml:"answers_cluster"`
-	Matchers        []MatcherConfig  `yaml:"matchers"`
-	Scope           ScopeConfig      `yaml:"scope"`
-	Limits          LimitsConfig     `yaml:"limits"`
-	Log             LogConfig        `yaml:"log"`
-	DB              DBConfig         `yaml:"db"`
+	AnswersClusters []Cluster       `yaml:"clusters"`
+	Matchers        []MatcherConfig `yaml:"matchers"`
+	Scope           ScopeConfig     `yaml:"scope"`
+	Limits          LimitsConfig    `yaml:"limits"`
+	Log             LogConfig       `yaml:"log"`
+	DB              DBConfig        `yaml:"db"`
 }
 
-// AnswersCluster is a named pool of answer strings. Matchers reference clusters by name.
-type AnswersCluster struct {
+// Cluster is a named pool of answer strings. Matchers reference clusters by name.
+type Cluster struct {
 	Name    string   `yaml:"name"`
 	Answers []string `yaml:"answers"`
 }
@@ -40,9 +40,9 @@ type ScopeConfig struct {
 
 // LimitsConfig holds behavioral rate and quiet-hours limits.
 type LimitsConfig struct {
-	QuietHours     QuietHoursConfig `yaml:"quiet_hours"`
-	RateCap        RateCapConfig    `yaml:"rate_cap"`
-	UserCooldownSec int             `yaml:"user_cooldown_sec"` // global per-user cooldown in seconds (default 900 = 15 min)
+	QuietHours      QuietHoursConfig `yaml:"quiet_hours"`
+	RateCap         RateCapConfig    `yaml:"rate_cap"`
+	UserCooldownSec int              `yaml:"user_cooldown_sec"` // global per-user cooldown in seconds (default 900 = 15 min)
 }
 
 // QuietHoursConfig defines a time window during which the bot stays silent.

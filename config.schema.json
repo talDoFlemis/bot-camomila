@@ -5,7 +5,7 @@
   "description": "Configuration for the bot-camomila WhatsApp de-escalation bot.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["scope", "matchers", "answers_cluster", "db"],
+  "required": ["scope", "matchers", "clusters", "db"],
   "properties": {
     "scope": {
       "type": "object",
@@ -54,7 +54,7 @@
           },
           "cluster": {
             "type": "string",
-            "description": "Name of the answers_cluster whose answers are sent when this matcher fires."
+            "description": "Name of the clusters whose answers are sent when this matcher fires."
           },
           "cooldown_sec": {
             "type": "integer",
@@ -65,7 +65,7 @@
         }
       }
     },
-    "answers_cluster": {
+    "clusters": {
       "type": "array",
       "description": "Named pools of reply strings. Matchers reference a cluster by name; one answer is chosen at random.",
       "items": {
