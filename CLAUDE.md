@@ -44,7 +44,7 @@ internal/
 - **time.Since for cooldowns** — not `time.Unix()` round-trips; monotonic clock avoids drift.
 - **JID normalization** — call `.ToNonAD()` when comparing sender JID to owner allowlist.
 - **HistorySync flood** — on first pair, whatsmeow replays old messages; timestamp-filter events to drop any message predating bot start time.
-- **Distance min-length** — distance 1 → words ≥5 chars; distance 2 → words ≥8 chars. Enforce at config load AND at match time.
+- **Distance cap by token length** — 1–4 runes → max distance 0; 5–8 runes → max distance 1; ≥9 runes → max distance 2. Effective distance = `min(config.Distance, cap)`. Enforced at match time in `maxDistanceForRuneLen`.
 
 ## Config Hot-Reload Pattern
 

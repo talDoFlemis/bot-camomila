@@ -45,17 +45,16 @@ func Tokenize(s string) []string {
 	return tokens
 }
 
-// minRuneLengthForDistance returns the minimum rune count a token must have to
-// be eligible for matching at the given Levenshtein distance. This implements
-// defense-in-depth for MATCH-05 (short-word rejection).
-func minRuneLengthForDistance(distance int) int {
-	switch distance {
-	case 1:
-		return 5
-	case 2:
-		return 8
+// maxDistanceForRuneLen returns the maximum Levenshtein distance allowed for a
+// token of the given rune length: 0 for 1–4 runes, 1 for 5–8, 2 for 9+.
+func maxDistanceForRuneLen(runeLen int) int {
+	switch {
+	case runeLen <= 4:
+		return 0
+	case runeLen <= 8:
+		return 1
 	default:
-		return 0 // distance 0 → no minimum
+		return 2
 	}
 }
 
@@ -77,17 +76,16 @@ func Match(text string, matchers []config.ResolvedMatcher) *Result {
 			normKeywords[j] = Normalize(w)
 		}
 
-		minLen := minRuneLengthForDistance(m.Distance)
-
 		for _, token := range tokens {
-			// Skip tokens that are too short for this matcher's distance.
-			if len([]rune(token)) < minLen {
-				continue
+			runeLen := len([]rune(token))
+			effectiveDist := m.Distance
+			if cap := maxDistanceForRuneLen(runeLen); cap < effectiveDist {
+				effectiveDist = cap
 			}
 
 			for j, kw := range normKeywords {
 				dist := levenshtein.ComputeDistance(token, kw)
-				if dist <= m.Distance {
+				if dist <= effectiveDist {
 					return &Result{
 						MatcherName: m.Name,
 						MatchedWord: token,

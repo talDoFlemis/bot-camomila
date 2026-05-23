@@ -142,10 +142,10 @@ func TestMatch(t *testing.T) {
 			want:     nil,
 		},
 		{
-			name:     "Short word rejection distance 1",
-			text:     "rj",
+			name:     "Short word (≤4 runes) rejects fuzzy at distance 1",
+			text:     "rk",
 			matchers: []config.ResolvedMatcher{mkMatcher("state", []string{"RJ"}, 1)},
-			want:     nil,
+			want:     nil, // 2 runes → max effective distance 0; "rk" is 1 away from "rj"
 		},
 		{
 			name:     "NFC NFD equivalence",
@@ -191,19 +191,19 @@ func TestMatch(t *testing.T) {
 			want:     nil,
 		},
 		{
-			name:     "Short word rejection distance 2",
+			name:     "7-rune token capped at distance 1, rejects distance-2 keyword",
 			text:     "abcdefg",
-			matchers: []config.ResolvedMatcher{mkMatcher("short", []string{"abcdefx"}, 2)},
-			want:     nil, // 7 runes < 8 minimum for distance 2
+			matchers: []config.ResolvedMatcher{mkMatcher("short", []string{"abcdexy"}, 2)},
+			want:     nil, // 7 runes → max effective distance 1; keyword is 2 away
 		},
 		{
-			name:     "Distance 2 match with long enough token",
-			text:     "abcdefgh",
-			matchers: []config.ResolvedMatcher{mkMatcher("long", []string{"abcdefxy"}, 2)},
+			name:     "Distance 2 match with 9-rune token",
+			text:     "abcdefghi",
+			matchers: []config.ResolvedMatcher{mkMatcher("long", []string{"abcdefgxy"}, 2)},
 			want: &Result{
 				MatcherName: "long",
-				MatchedWord: "abcdefgh",
-				KeywordHit:  "abcdefxy",
+				MatchedWord: "abcdefghi",
+				KeywordHit:  "abcdefgxy",
 				Distance:    2,
 			},
 		},
