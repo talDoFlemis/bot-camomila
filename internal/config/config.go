@@ -2,7 +2,10 @@
 // This file contains type definitions only; no functions.
 package config
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // Config is the raw YAML-parsed configuration. Fields map directly to config.yaml sections.
 type Config struct {
@@ -55,9 +58,10 @@ type RateCapConfig struct {
 	PerHour int `yaml:"per_hour"`
 }
 
-// LogConfig controls log output format.
+// LogConfig controls log output format and level.
 type LogConfig struct {
 	Format string `yaml:"format"` // "json" | "text" | "" (auto-detect via isatty)
+	Level  string `yaml:"level"`  // "debug" | "info" | "warn" | "error" | "" (keep current)
 }
 
 // DBConfig holds the SQLite session database path.
@@ -77,6 +81,7 @@ type Snapshot struct {
 	Matchers             []ResolvedMatcher
 	Location             *time.Location // resolved from QuietHours.Timezone (nil if not configured)
 	UserCooldownDuration time.Duration  // resolved from LimitsConfig.UserCooldownSec
+	LogLevel             *slog.Level    // nil = keep current level; set when log.level is configured
 }
 
 // ResolvedMatcher is a matcher with its answer cluster already resolved.

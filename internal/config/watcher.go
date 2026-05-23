@@ -16,11 +16,13 @@ import (
 type Watcher struct {
 	store      *Store
 	configPath string
+	levelVar   *slog.LevelVar // nil = caller does not want dynamic level changes
 }
 
 // NewWatcher creates a Watcher that will reload cfg into store whenever the file changes.
-func NewWatcher(store *Store, configPath string) *Watcher {
-	return &Watcher{store: store, configPath: configPath}
+// levelVar, if non-nil, is updated whenever a reload produces a new log.level value.
+func NewWatcher(store *Store, configPath string, levelVar *slog.LevelVar) *Watcher {
+	return &Watcher{store: store, configPath: configPath, levelVar: levelVar}
 }
 
 // Run starts the watcher loop. It uses fsnotify to watch the parent directory
@@ -131,5 +133,9 @@ func (w *Watcher) reload() {
 		return
 	}
 	w.store.Swap(snap)
+	if w.levelVar != nil && snap.LogLevel != nil {
+		w.levelVar.Set(*snap.LogLevel)
+		slog.Info("log level updated", "level", snap.LogLevel.String())
+	}
 	slog.Info("config reloaded", "path", w.configPath)
 }

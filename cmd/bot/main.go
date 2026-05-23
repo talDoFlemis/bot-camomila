@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	setupLogging()
+	levelVar := setupLogging()
 
 	// D-04: --config flag (default "./config.yaml"); BOT_CONFIG env var as fallback.
 	// Flag wins over env var.
@@ -35,7 +35,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	if err := app.Run(ctx, *configPath, startTime); err != nil {
+	if err := app.Run(ctx, *configPath, startTime, levelVar); err != nil {
 		slog.Error("bot exited with error", "err", err)
 		os.Exit(1)
 	}
@@ -43,13 +43,18 @@ func main() {
 
 // setupLogging selects a slog handler based on whether stdout is a terminal.
 // Text handler (LevelDebug) for interactive sessions; JSON handler (LevelInfo)
-// for Docker / CI / non-TTY environments. Must be called before any slog usage.
-func setupLogging() {
+// for Docker / CI / non-TTY environments. Returns a LevelVar so callers can
+// change the log level at runtime (e.g. via config hot-reload).
+func setupLogging() *slog.LevelVar {
+	var levelVar slog.LevelVar
 	var handler slog.Handler
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+		levelVar.Set(slog.LevelDebug)
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar})
 	} else {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+		levelVar.Set(slog.LevelInfo)
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar})
 	}
 	slog.SetDefault(slog.New(handler))
+	return &levelVar
 }

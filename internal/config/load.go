@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -127,6 +128,16 @@ func validate(cfg Config) (*Snapshot, error) {
 		})
 	}
 
+	// CHECK 7 — log level
+	var logLevel *slog.Level
+	if cfg.Log.Level != "" {
+		lvl, err := parseLogLevel(cfg.Log.Level)
+		if err != nil {
+			return nil, err
+		}
+		logLevel = &lvl
+	}
+
 	return &Snapshot{
 		Scope:                cfg.Scope,
 		Limits:               cfg.Limits,
@@ -135,7 +146,24 @@ func validate(cfg Config) (*Snapshot, error) {
 		Matchers:             resolved,
 		Location:             loc,
 		UserCooldownDuration: resolveCooldown(cfg.Limits.UserCooldownSec, 900),
+		LogLevel:             logLevel,
 	}, nil
+}
+
+// parseLogLevel converts a string to slog.Level. Returns error for unknown values.
+func parseLogLevel(s string) (slog.Level, error) {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("log.level %q is invalid (valid: debug, info, warn, error)", s)
+	}
 }
 
 // resolveCooldown converts a seconds value to time.Duration, using defaultSec if value is 0.

@@ -19,12 +19,19 @@ import (
 // hot-reload, and the WhatsApp adapter, then blocks until ctx is cancelled.
 // startTime must be recorded before any whatsmeow operations — it is used
 // to filter out HistorySync-replayed messages (D-07).
-func Run(ctx context.Context, configPath string, startTime time.Time) error {
+// levelVar, if non-nil, is updated whenever a reload produces a new log.level value.
+func Run(ctx context.Context, configPath string, startTime time.Time, levelVar *slog.LevelVar) error {
 	// Step 1 — Load initial config.
 	snap, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("initial config load failed: %w", err)
 	}
+
+	// Apply log level from config if set, before any further logging.
+	if levelVar != nil && snap.LogLevel != nil {
+		levelVar.Set(*snap.LogLevel)
+	}
+
 	slog.Info("starting bot",
 		"config_path", configPath,
 		"start_time", startTime.Format(time.RFC3339),
@@ -34,7 +41,7 @@ func Run(ctx context.Context, configPath string, startTime time.Time) error {
 	cfgStore := config.NewStore(snap)
 
 	// Step 3 — Start config watcher in background goroutine.
-	watcher := config.NewWatcher(cfgStore, configPath)
+	watcher := config.NewWatcher(cfgStore, configPath, levelVar)
 	go func() {
 		if err := watcher.Run(ctx); err != nil {
 			slog.Error("config watcher exited with error", "err", err)
