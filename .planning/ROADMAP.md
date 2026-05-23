@@ -29,7 +29,7 @@
 - `modernc.org/sqlite` dialect must be registered as `"sqlite3"` for sqlstore compatibility; a mismatch will silently fail session writes.
 - First-pair `HistorySync` flood may fire old messages at the bot; timestamp-filter events to drop any message predating bot start time.
 
-**Plans:** 1/4 plans executed
+**Plans:** 3/4 plans executed
 Plans:
 **Wave 1**
 
@@ -37,8 +37,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Config package: YAML load/validate + atomic Store + fsnotify Watcher with debounce + mtime fallback
-- [ ] 01-03-PLAN.md — WhatsApp adapter: waLog bridge + SQLite/sqlstore + QR pairing + lifecycle event handler
+- [x] 01-02-PLAN.md — Config package: YAML load/validate + atomic Store + fsnotify Watcher with debounce + mtime fallback
+- [x] 01-03-PLAN.md — WhatsApp adapter: waLog bridge + SQLite/sqlstore + QR pairing + lifecycle event handler
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -110,7 +110,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Session & Config Foundations | 1/4 | In Progress|  |
+| 1. Session & Config Foundations | 3/4 | In Progress|  |
 | 2. Matcher Pipeline & Safe Dispatch | 0/0 | Not started | - |
 | 3. Owner Commands & Operability | 0/0 | Not started | - |
 | 4. Docker Packaging & Deploy | 0/0 | Not started | - |
