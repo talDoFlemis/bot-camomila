@@ -109,4 +109,49 @@ Scope: v1 = the minimum bot that can be safely left running in one WhatsApp grou
 
 ## Traceability
 
-Phase → requirement mapping is filled in by `/gsd:plan-phase` after the roadmap is created.
+| Requirement | Phase |
+|---|---|
+| SESSION-01 | 1 |
+| SESSION-02 | 1 |
+| SESSION-03 | 1 |
+| SESSION-04 | 1 |
+| SESSION-05 | 1 |
+| CONFIG-01 | 1 |
+| CONFIG-02 | 1 |
+| CONFIG-03 | 1 |
+| CONFIG-04 | 1 |
+| CONFIG-05 | 1 |
+| SCOPE-01 | 1 |
+| SCOPE-02 | 1 |
+| SCOPE-03 | 1 |
+| OBSERV-01 | 1 |
+| OBSERV-03 | 1 |
+| MATCH-01 | 2 |
+| MATCH-02 | 2 |
+| MATCH-03 | 2 |
+| MATCH-04 | 2 |
+| MATCH-05 | 2 |
+| REPLY-01 | 2 |
+| REPLY-02 | 2 |
+| REPLY-03 | 2 |
+| REPLY-04 | 2 |
+| REPLY-05 | 2 |
+| COOLDOWN-01 | 2 |
+| COOLDOWN-02 | 2 |
+| COOLDOWN-03 | 2 |
+| COOLDOWN-04 | 2 |
+| QUIET-01 | 2 |
+| QUIET-02 | 2 |
+| QUIET-03 | 2 |
+| OBSERV-02 | 2 |
+| OWNER-01 | 3 |
+| OWNER-02 | 3 |
+| OWNER-03 | 3 |
+| OWNER-04 | 3 |
+| OWNER-05 | 3 |
+| OWNER-06 | 3 |
+| DEPLOY-01 | 4 |
+| DEPLOY-02 | 4 |
+| DEPLOY-03 | 4 |
+| DEPLOY-04 | 4 |
+| DEPLOY-05 | 4 |
