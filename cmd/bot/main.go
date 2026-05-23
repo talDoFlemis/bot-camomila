@@ -50,10 +50,10 @@ func setupLogging() *slog.LevelVar {
 	var handler slog.Handler
 	if isatty.IsTerminal(os.Stdout.Fd()) {
 		levelVar.Set(slog.LevelDebug)
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar})
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar, AddSource: true})
 	} else {
 		levelVar.Set(slog.LevelInfo)
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar})
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: &levelVar, AddSource: true})
 	}
 	slog.SetDefault(slog.New(handler))
 	return &levelVar
