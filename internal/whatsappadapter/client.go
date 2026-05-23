@@ -60,7 +60,7 @@ func (a *Adapter) Start(ctx context.Context) error {
 	dbPath := snap.DB.Path
 
 	// Step 1: Open SQLite database using the original driver name ("sqlite").
-	dsn := "file:" + dbPath + "?_foreign_keys=on"
+	dsn := "file:" + dbPath + "?_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		cancel()
