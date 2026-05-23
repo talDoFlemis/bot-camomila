@@ -27,6 +27,9 @@ Connect to WhatsApp via QR pairing, persist the device session in SQLite, load a
 - **D-05:** SQLite DB path: in the YAML under `db: { path: ./session.sqlite }`. Not a CLI flag. No separate `--db` flag.
 - **D-06:** No other CLI flags in Phase 1.
 
+### HistorySync / First-Pair Flood Filter
+- **D-07:** Record `startTime := time.Now()` at bot startup. In the message handler, drop any event whose `info.Timestamp.Before(startTime)` — this silently discards all HistorySync-replayed messages without needing to handle the HistorySync event type directly.
+
 ### Claude's Discretion
 - **Package structure:** `cmd/bot/main.go` + `internal/` packages from day 1 (hexagonal as designed). `internal/whatsappadapter` is the ONLY package importing whatsmeow.
 - **Log format selection:** TTY auto-detect via `isatty`. Text handler when stdout is a terminal (dev); JSON handler otherwise (Docker, CI). No `LOG_FORMAT` env var needed.
@@ -91,4 +94,4 @@ None — discussion stayed within phase scope.
 ---
 
 *Phase: 1-Session & Config Foundations*
-*Context gathered: 2026-05-23*
+*Context gathered: 2026-05-23 (updated: 2026-05-23)*
