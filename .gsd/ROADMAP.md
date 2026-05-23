@@ -1,18 +1,18 @@
 ---
 milestone: v1.0
 version: 1.0.0
-updated: "2026-05-23T11:30:00Z"
+updated: "2026-05-23T12:11:00Z"
 ---
 
 # Roadmap
 
-> **Current Phase:** 2 - Matcher Pipeline & Safe Dispatch
-> **Status:** planning
+> **Current Phase:** 3 - Owner Commands & Operability
+> **Status:** not started
 
 ## Must-Haves (from SPEC)
 
-- [ ] Fuzzy-match keywords and reply with calming answers (Phase 2)
-- [ ] Cooldowns, quiet hours, and rate limiting (Phase 2)
+- [x] Fuzzy-match keywords and reply with calming answers (Phase 2)
+- [x] Cooldowns, quiet hours, and rate limiting (Phase 2)
 - [ ] Owner kill switch via DM (Phase 3)
 - [ ] Docker packaging for VPS deployment (Phase 4)
 
@@ -34,19 +34,18 @@ updated: "2026-05-23T11:30:00Z"
 ---
 
 ### Phase 2: Matcher Pipeline & Safe Dispatch
-**Status:** ⬜ Not Started
+**Status:** ✅ Complete
 **Objective:** Bot detects trigger words in group messages and replies with a calming answer, with cooldowns, quiet hours, rate limiting, and jitter all enforced as a single indivisible bundle.
 **Depends on:** Phase 1
 **Requirements:** MATCH-01, MATCH-02, MATCH-03, MATCH-04, MATCH-05, REPLY-01, REPLY-02, REPLY-03, REPLY-04, REPLY-05, COOLDOWN-01, COOLDOWN-02, COOLDOWN-03, COOLDOWN-04, QUIET-01, QUIET-02, QUIET-03, OBSERV-02
 
-**Acceptance criteria:**
-- A message containing a configured keyword (within Levenshtein distance) triggers a threaded WhatsApp reply after a 2–8 s delay.
-- The same matcher does not fire again within its configured cooldown window; the same sender cannot re-trigger within the per-user cooldown window.
-- During quiet-hours (including midnight wrap-around), no reply is sent; suppression is logged.
-- When the global rate cap would be exceeded, the reply is dropped and logged.
-- Short words below the per-distance minimum length never produce a false positive match.
-
-**Plans:** TBD
+**Plans:**
+- [x] Plan 2.1: Dependencies + domain/config type extensions (wave 1)
+- [x] Plan 2.2: Fuzzy matcher engine — Levenshtein, NFC, tokenization (wave 1)
+- [x] Plan 2.3: Cooldown engine — per-matcher + per-user with injectable clock (wave 1)
+- [x] Plan 2.4: Quiet hours + kill switch gate (wave 1)
+- [x] Plan 2.5: Pipeline orchestrator — composes all gates + rate limiter (wave 2)
+- [x] Plan 2.6: Adapter integration — threaded reply, jitter, app.Run wiring (wave 3)
 
 ---
 
@@ -87,7 +86,7 @@ updated: "2026-05-23T11:30:00Z"
 | Phase | Status | Plans | Completed |
 |-------|--------|-------|-----------|
 | 1. Session & Config Foundations | ✅ | 4/4 | 2026-05-23 |
-| 2. Matcher Pipeline & Safe Dispatch | ⬜ | 0/0 | — |
+| 2. Matcher Pipeline & Safe Dispatch | ✅ | 6/6 | 2026-05-23 |
 | 3. Owner Commands & Operability | ⬜ | 0/0 | — |
 | 4. Docker Packaging & Deploy | ⬜ | 0/0 | — |
 
@@ -98,6 +97,6 @@ updated: "2026-05-23T11:30:00Z"
 | Phase | Started | Completed | Duration |
 |-------|---------|-----------|----------|
 | 1 | 2026-05-22 | 2026-05-23 | 1 day |
-| 2 | — | — | — |
+| 2 | 2026-05-23 | 2026-05-23 | <1 day |
 | 3 | — | — | — |
 | 4 | — | — | — |
