@@ -29,11 +29,11 @@
 - `modernc.org/sqlite` dialect must be registered as `"sqlite3"` for sqlstore compatibility; a mismatch will silently fail session writes.
 - First-pair `HistorySync` flood may fire old messages at the bot; timestamp-filter events to drop any message predating bot start time.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Module deps + hexagonal directory scaffold + Config/Snapshot types + domain.Message + entrypoint stub
+- [x] 01-01-PLAN.md — Module deps + hexagonal directory scaffold + Config/Snapshot types + domain.Message + entrypoint stub
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -110,7 +110,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Session & Config Foundations | 0/4 | Not started | - |
+| 1. Session & Config Foundations | 1/4 | In Progress|  |
 | 2. Matcher Pipeline & Safe Dispatch | 0/0 | Not started | - |
 | 3. Owner Commands & Operability | 0/0 | Not started | - |
 | 4. Docker Packaging & Deploy | 0/0 | Not started | - |
