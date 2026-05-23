@@ -38,7 +38,6 @@ func Load(path string) (*Snapshot, error) {
 //  3. timezone — if non-empty, must resolve via time.LoadLocation (never time.Local)
 //  4. cluster resolution — each matcher's cluster ref must resolve; no duplicates allowed
 //  5. distance min-length — distance 1 → word ≥5 runes; distance 2 → word ≥8 runes
-//  6. self-loop guard — no answer token may exactly match any matcher keyword (lowercased)
 func validate(cfg Config) (*Snapshot, error) {
 	// CHECK 1 — group_jid
 	if cfg.Scope.GroupJID != "" {
@@ -99,24 +98,6 @@ func validate(cfg Config) (*Snapshot, error) {
 		answers, ok := clusterMap[m.Cluster]
 		if !ok {
 			return nil, fmt.Errorf("matcher %q references unknown cluster %q", m.Name, m.Cluster)
-		}
-
-		// CHECK 6 — self-loop guard
-		// Build a lowercase set of matcher keywords.
-		kwSet := make(map[string]struct{}, len(m.Words))
-		for _, w := range m.Words {
-			kwSet[strings.ToLower(w)] = struct{}{}
-		}
-		for _, answer := range answers {
-			for _, token := range strings.Fields(answer) {
-				lToken := strings.ToLower(token)
-				if _, found := kwSet[lToken]; found {
-					return nil, fmt.Errorf(
-						"answer in cluster %q contains keyword %q from matcher %q (self-loop)",
-						m.Cluster, token, m.Name,
-					)
-				}
-			}
 		}
 
 		resolved = append(resolved, ResolvedMatcher{
