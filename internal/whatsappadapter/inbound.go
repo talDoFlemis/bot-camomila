@@ -2,10 +2,16 @@
 package whatsappadapter
 
 import (
+	"context"
 	"log/slog"
+	"math/rand/v2"
+	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 )
 
 // onEvent is the single event handler registered with the whatsmeow client via
@@ -51,8 +57,9 @@ func (a *Adapter) onEvent(evt interface{}) {
 }
 
 // handleMessage applies the gate pipeline to a raw WhatsApp message event.
-// Phase 1 implementation: gates only — no matcher dispatch yet.
-// Phase 2 will add matcher pipeline dispatch after the final gate.
+// It runs the adapter-level gates (history sync, scope, self-message, text-only),
+// constructs a domain message, delegates to the Pipeline, and sends a threaded
+// reply with jitter if the pipeline decides to fire.
 func (a *Adapter) handleMessage(evt *events.Message) {
 	// Single atomic load — hold snap for the full duration of this call (CONFIG-03).
 	snap := a.cfg.Get()
@@ -96,13 +103,79 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		return
 	}
 
-	// Phase 1 terminal action: log the received message.
-	// Phase 2 will wire matcher dispatch and reply here.
-	slog.Info("message received",
-		"event", "message_received",
-		"group_jid", evt.Info.Chat.String(),
-		"sender_jid", evt.Info.Sender.ToNonAD().String(), // ToNonAD strips device suffix (T-03-05)
+	// Construct pipeline.Message with all Phase 2 fields.
+	quotedBody, quotedSender := extractQuotedText(evt.Message, a.botJID)
+	msg := pipeline.Message{
+		ID:              evt.Info.ID,
+		GroupJID:        evt.Info.Chat.String(),
+		SenderJID:       evt.Info.Sender.ToNonAD().String(),
+		SenderPushName:  evt.Info.PushName,
+		Text:            text,
+		QuotedBody:      quotedBody,
+		QuotedSenderJID: quotedSender,
+		Timestamp:       evt.Info.Timestamp,
+	}
+
+	// Run the pipeline.
+	decision := a.pipeline.Handle(msg, snap)
+
+	// Log every dispatch decision (OBSERV-02).
+	slog.Info("dispatch decision",
+		"event", "dispatch",
+		"msg_id", msg.ID,
+		"sender_jid", msg.SenderJID,
+		"matcher", decision.MatcherName,
+		"matched_word", decision.MatchedWord,
+		"reply", decision.Reply,
+		"drop_reason", decision.DropReason,
+	)
+
+	if !decision.Reply {
+		return
+	}
+
+	// Send reply in a goroutine with jitter (REPLY-04).
+	// Do NOT block the event handler — whatsmeow holds a dispatch lock.
+	go a.sendReply(evt, decision.Answer)
+}
+
+// sendReply sends a threaded WhatsApp reply to the message that triggered the match.
+// It sleeps for a random 2-8s jitter before sending to appear more human (REPLY-04).
+// This must be called from a goroutine — never from the event handler directly.
+func (a *Adapter) sendReply(evt *events.Message, answer string) {
+	// Random 2-8s jitter (REPLY-04).
+	jitter := time.Duration(2+rand.IntN(7)) * time.Second
+	time.Sleep(jitter)
+
+	// Build threaded reply (REPLY-01): ExtendedTextMessage with ContextInfo.
+	msg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(answer),
+			ContextInfo: &waE2E.ContextInfo{
+				StanzaID:      proto.String(evt.Info.ID),
+				Participant:   proto.String(evt.Info.Sender.String()),
+				QuotedMessage: evt.Message,
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := a.client.SendMessage(ctx, evt.Info.Chat, msg)
+	if err != nil {
+		slog.Error("failed to send reply",
+			"event", "send_error",
+			"msg_id", evt.Info.ID,
+			"err", err,
+		)
+		return
+	}
+
+	slog.Info("reply sent",
+		"event", "reply_sent",
 		"msg_id", evt.Info.ID,
+		"jitter_ms", jitter.Milliseconds(),
 	)
 }
 
@@ -119,4 +192,36 @@ func extractText(m *waE2E.Message) string {
 		return ext.GetText()
 	}
 	return ""
+}
+
+// extractQuotedText returns the plain text and sender JID of a quoted message.
+// If the quoted message's author is the bot itself (identified by botJID), it returns
+// empty strings to prevent quote-chain loops (Pitfall 6).
+func extractQuotedText(m *waE2E.Message, botJID string) (body string, senderJID string) {
+	if m == nil {
+		return "", ""
+	}
+
+	// Quoted messages come through ExtendedTextMessage.ContextInfo.
+	ext := m.GetExtendedTextMessage()
+	if ext == nil {
+		return "", ""
+	}
+	ci := ext.GetContextInfo()
+	if ci == nil || ci.QuotedMessage == nil {
+		return "", ""
+	}
+
+	// Extract the quoted message's sender.
+	participant := ci.GetParticipant()
+
+	// Quote-chain prevention: if the quoted author is the bot itself, return empty
+	// so the pipeline won't match against the bot's own previous replies.
+	if participant == botJID {
+		return "", ""
+	}
+
+	// Extract text from the quoted message.
+	quotedText := extractText(ci.QuotedMessage)
+	return quotedText, participant
 }

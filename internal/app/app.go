@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
+	"github.com/taldoflemis/bot-camomila/internal/cooldown"
+	"github.com/taldoflemis/bot-camomila/internal/killswitch"
+	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 	"github.com/taldoflemis/bot-camomila/internal/whatsappadapter"
 )
 
@@ -38,19 +41,33 @@ func Run(ctx context.Context, configPath string, startTime time.Time) error {
 		}
 	}()
 
-	// Step 4 — Create and start the WhatsApp adapter.
+	// Step 4 — Create Phase 2 pipeline components.
+	ks := killswitch.New()
+	cd := cooldown.NewTracker(nil) // nil = real clock (time.Now)
+	rl := pipeline.NewRateLimiter(nil)
+	pipe := pipeline.New(ks, cd, rl, nil) // nil clock = time.Now
+
+	// Start cooldown reaper in background (cleanup every 5 minutes).
+	go cd.StartReaper(ctx, 5*time.Minute)
+
+	slog.Info("pipeline created",
+		"kill_switch", "active",
+		"cooldown_reaper_interval", "5m",
+	)
+
+	// Step 5 — Create and start the WhatsApp adapter.
 	// adapter.New() records startTime internally (time.Now() in New).
 	// The startTime parameter to Run() is for app-level logging only.
-	adapter := whatsappadapter.New(cfgStore)
+	adapter := whatsappadapter.New(cfgStore, pipe)
 	if err := adapter.Start(ctx); err != nil {
 		return fmt.Errorf("whatsapp adapter start failed: %w", err)
 	}
 
-	// Step 5 — Block on context until shutdown signal.
+	// Step 6 — Block on context until shutdown signal.
 	<-ctx.Done()
 	slog.Info("shutdown signal received; disconnecting")
 
-	// Step 6 — Graceful shutdown.
+	// Step 7 — Graceful shutdown.
 	// Order is mandatory: adapter.Disconnect() (calls client.Disconnect then db.Close).
 	// NEVER call Disconnect() from inside an event handler — deadlock.
 	adapter.Disconnect()
