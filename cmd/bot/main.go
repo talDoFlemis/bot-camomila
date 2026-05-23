@@ -39,9 +39,6 @@ func main() {
 		slog.Error("bot exited with error", "err", err)
 		os.Exit(1)
 	}
-
-	<-ctx.Done()
-	slog.Info("bot stopped")
 }
 
 // setupLogging selects a slog handler based on whether stdout is a terminal.
