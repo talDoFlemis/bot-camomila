@@ -2,7 +2,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Session & Config Foundations** — Bot connects, authenticates, gates the group, and logs everything; no matching yet.
+- [x] **Phase 1: Session & Config Foundations** — Bot connects, authenticates, gates the group, and logs everything; no matching yet. (completed 2026-05-23)
 - [ ] **Phase 2: Matcher Pipeline & Safe Dispatch** — Bot detects heated messages and replies with cooldowns and quiet hours enforced.
 - [ ] **Phase 3: Owner Commands & Operability** — Operator can pause and resume the bot via DM without restarting the process.
 - [ ] **Phase 4: Docker Packaging & Deploy** — Bot ships as a container image ready for VPS deployment.
@@ -29,7 +29,7 @@
 - `modernc.org/sqlite` dialect must be registered as `"sqlite3"` for sqlstore compatibility; a mismatch will silently fail session writes.
 - First-pair `HistorySync` flood may fire old messages at the bot; timestamp-filter events to drop any message predating bot start time.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 
@@ -42,7 +42,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-04-PLAN.md — Entrypoint wiring: app.Run() composition root + graceful shutdown + operator verification
+- [x] 01-04-PLAN.md — Entrypoint wiring: app.Run() composition root + graceful shutdown + operator verification
 
 ### Phase 2: Matcher Pipeline & Safe Dispatch
 
@@ -110,7 +110,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Session & Config Foundations | 3/4 | In Progress|  |
+| 1. Session & Config Foundations | 4/4 | Complete   | 2026-05-23 |
 | 2. Matcher Pipeline & Safe Dispatch | 0/0 | Not started | - |
 | 3. Owner Commands & Operability | 0/0 | Not started | - |
 | 4. Docker Packaging & Deploy | 0/0 | Not started | - |

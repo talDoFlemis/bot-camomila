@@ -6,25 +6,25 @@ Scope: v1 = the minimum bot that can be safely left running in one WhatsApp grou
 
 ### Session
 
-- [ ] **SESSION-01**: Bot pairs to WhatsApp via on-terminal QR code on first launch.
-- [ ] **SESSION-02**: Bot persists the whatsmeow device session in SQLite (`modernc.org/sqlite`, CGO-free) and resumes automatically across restarts without re-pairing.
-- [ ] **SESSION-03**: On startup, bot runs SQLite `PRAGMA integrity_check` and exits non-zero on failure (no silent corruption).
-- [ ] **SESSION-04**: On `events.LoggedOut`, bot logs the event loudly at ERROR level and exits non-zero (no auto re-pair).
-- [ ] **SESSION-05**: Bot survives transient WhatsApp disconnects (network blips, multi-device reconnect) and resumes message handling without restart.
+- [x] **SESSION-01**: Bot pairs to WhatsApp via on-terminal QR code on first launch.
+- [x] **SESSION-02**: Bot persists the whatsmeow device session in SQLite (`modernc.org/sqlite`, CGO-free) and resumes automatically across restarts without re-pairing.
+- [x] **SESSION-03**: On startup, bot runs SQLite `PRAGMA integrity_check` and exits non-zero on failure (no silent corruption).
+- [x] **SESSION-04**: On `events.LoggedOut`, bot logs the event loudly at ERROR level and exits non-zero (no auto re-pair).
+- [x] **SESSION-05**: Bot survives transient WhatsApp disconnects (network blips, multi-device reconnect) and resumes message handling without restart.
 
 ### Config
 
-- [ ] **CONFIG-01**: Bot loads a YAML config file at a path supplied via CLI flag or env var (default `./config.yaml`).
-- [ ] **CONFIG-02**: Config validates at load time and refuses to start on: invalid group JID, owner JID parse error, unresolvable IANA timezone, matcher distance below min-word-length (distance 1 → ≥5 chars, distance 2 → ≥8 chars), or any answer whose tokens fuzzy-match its own matcher keywords (self-loop guard).
-- [ ] **CONFIG-03**: Bot exposes the current config as an immutable snapshot via `atomic.Pointer[Snapshot]`; readers hold a snapshot for the full duration of a message-handling call.
-- [ ] **CONFIG-04**: Bot hot-reloads config on YAML file change via `fsnotify` watching the **parent directory** (not the file), with 200–500 ms debounce; on parse/validate failure, bot keeps the previous snapshot and logs WARN.
-- [ ] **CONFIG-05**: Bot falls back to a 30–60 s mtime poll if fsnotify reports an unrecoverable error.
+- [x] **CONFIG-01**: Bot loads a YAML config file at a path supplied via CLI flag or env var (default `./config.yaml`).
+- [x] **CONFIG-02**: Config validates at load time and refuses to start on: invalid group JID, owner JID parse error, unresolvable IANA timezone, matcher distance below min-word-length (distance 1 → ≥5 chars, distance 2 → ≥8 chars), or any answer whose tokens fuzzy-match its own matcher keywords (self-loop guard).
+- [x] **CONFIG-03**: Bot exposes the current config as an immutable snapshot via `atomic.Pointer[Snapshot]`; readers hold a snapshot for the full duration of a message-handling call.
+- [x] **CONFIG-04**: Bot hot-reloads config on YAML file change via `fsnotify` watching the **parent directory** (not the file), with 200–500 ms debounce; on parse/validate failure, bot keeps the previous snapshot and logs WARN.
+- [x] **CONFIG-05**: Bot falls back to a 30–60 s mtime poll if fsnotify reports an unrecoverable error.
 
 ### Scope (Hard Gates Before Matching)
 
-- [ ] **SCOPE-01**: Bot listens to exactly one WhatsApp group JID, configured at startup; any message whose `Info.Chat` differs from the configured group is dropped at the adapter's first gate.
-- [ ] **SCOPE-02**: Bot drops any message with `Info.IsFromMe == true` immediately after the group-JID gate (self-reply loop prevention). *Promoted from PITFALLS/FEATURES research — was missing from initial PROJECT.md Active list.*
-- [ ] **SCOPE-03**: Bot drops non-text message types it does not handle (stickers, audio, view-once) before they reach the matcher.
+- [x] **SCOPE-01**: Bot listens to exactly one WhatsApp group JID, configured at startup; any message whose `Info.Chat` differs from the configured group is dropped at the adapter's first gate.
+- [x] **SCOPE-02**: Bot drops any message with `Info.IsFromMe == true` immediately after the group-JID gate (self-reply loop prevention). *Promoted from PITFALLS/FEATURES research — was missing from initial PROJECT.md Active list.*
+- [x] **SCOPE-03**: Bot drops non-text message types it does not handle (stickers, audio, view-once) before they reach the matcher.
 
 ### Match
 
@@ -74,9 +74,9 @@ Scope: v1 = the minimum bot that can be safely left running in one WhatsApp grou
 
 ### Observ
 
-- [ ] **OBSERV-01**: All bot logs use `log/slog` with structured fields (`matcher`, `user_jid`, `group_jid`, `event`); JSON handler in Docker, text handler in dev.
+- [x] **OBSERV-01**: All bot logs use `log/slog` with structured fields (`matcher`, `user_jid`, `group_jid`, `event`); JSON handler in Docker, text handler in dev.
 - [ ] **OBSERV-02**: Bot logs every match decision: matcher fired, dropped by cooldown, dropped by quiet hours, dropped by kill switch, dropped by rate cap — each with reason.
-- [ ] **OBSERV-03**: Bot logs whatsmeow lifecycle events (Connected, Disconnected, LoggedOut, PairSuccess) at INFO/ERROR level.
+- [x] **OBSERV-03**: Bot logs whatsmeow lifecycle events (Connected, Disconnected, LoggedOut, PairSuccess) at INFO/ERROR level.
 
 ## v2 Requirements (Deferred)
 
