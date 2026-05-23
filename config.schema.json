@@ -45,32 +45,62 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "words", "distance", "cluster"],
+        "required": ["name"],
+        "oneOf": [
+          { "required": ["levenshtein"] },
+          { "required": ["mention"] }
+        ],
         "properties": {
           "name": {
             "type": "string",
             "description": "Unique identifier for this matcher (used in logs and listener references)."
           },
-          "words": {
-            "type": "array",
-            "description": "Keywords to match against incoming message tokens (NFC-normalised, case-insensitive). Distance 1 requires ≥5-rune words; distance 2 requires ≥8-rune words.",
-            "items": { "type": "string" },
-            "minItems": 1
+          "levenshtein": {
+            "type": "object",
+            "description": "Fuzzy keyword match. Fires when a message token is within Levenshtein distance of any configured word.",
+            "additionalProperties": false,
+            "required": ["words", "distance", "cluster"],
+            "properties": {
+              "words": {
+                "type": "array",
+                "description": "Keywords to match. NFC-normalised, case-insensitive. Distance 1 requires ≥5-rune words; distance 2 requires ≥8-rune words.",
+                "items": { "type": "string" },
+                "minItems": 1
+              },
+              "distance": {
+                "type": "integer",
+                "description": "Maximum Levenshtein distance. 0 = exact, 1 = one typo (words ≥5 runes), 2 = two typos (words ≥8 runes).",
+                "enum": [0, 1, 2]
+              },
+              "cluster": {
+                "type": "string",
+                "description": "Name of the cluster whose answers are sent. Must match a name in the top-level clusters array."
+              },
+              "cooldown_sec": {
+                "type": "integer",
+                "description": "Per-matcher cooldown in seconds. Default: 300 (5 min).",
+                "minimum": 0,
+                "default": 300
+              }
+            }
           },
-          "distance": {
-            "type": "integer",
-            "description": "Maximum Levenshtein distance for a match. 0 = exact, 1 = one typo (words ≥5 runes), 2 = two typos (words ≥8 runes).",
-            "enum": [0, 1, 2]
-          },
-          "cluster": {
-            "type": "string",
-            "description": "Name of the cluster whose answers are sent when this matcher fires. Must match a name defined in the top-level clusters array."
-          },
-          "cooldown_sec": {
-            "type": "integer",
-            "description": "Per-matcher cooldown in seconds. Bot will not fire this matcher again until the cooldown expires. Default: 300 (5 min).",
-            "minimum": 0,
-            "default": 300
+          "mention": {
+            "type": "object",
+            "description": "Mention match. Fires when the bot is @mentioned in the message.",
+            "additionalProperties": false,
+            "required": ["cluster"],
+            "properties": {
+              "cluster": {
+                "type": "string",
+                "description": "Name of the cluster whose answers are sent. Must match a name in the top-level clusters array."
+              },
+              "cooldown_sec": {
+                "type": "integer",
+                "description": "Per-matcher cooldown in seconds. Default: 300 (5 min).",
+                "minimum": 0,
+                "default": 300
+              }
+            }
           }
         }
       }

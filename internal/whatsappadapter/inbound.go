@@ -115,6 +115,7 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		QuotedBody:      quotedBody,
 		QuotedSenderJID: quotedSender,
 		Timestamp:       evt.Info.Timestamp,
+		MentionedBot:    isBotMentioned(evt.Message, a.botJID),
 	}
 
 	// Run the pipeline with this listener's matchers.
@@ -178,6 +179,28 @@ func (a *Adapter) sendReply(evt *events.Message, answer string) {
 		"msg_id", evt.Info.ID,
 		"jitter_ms", jitter.Milliseconds(),
 	)
+}
+
+// isBotMentioned returns true if botJID appears in the message's ContextInfo.MentionedJID list.
+// Mentions only exist in ExtendedTextMessage — plain Conversation messages never carry them.
+func isBotMentioned(m *waE2E.Message, botJID string) bool {
+	if m == nil || botJID == "" {
+		return false
+	}
+	ext := m.GetExtendedTextMessage()
+	if ext == nil {
+		return false
+	}
+	ci := ext.GetContextInfo()
+	if ci == nil {
+		return false
+	}
+	for _, jid := range ci.GetMentionedJID() {
+		if jid == botJID {
+			return true
+		}
+	}
+	return false
 }
 
 // findListener returns the ResolvedListener for the given group JID, or nil if not configured.

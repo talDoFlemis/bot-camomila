@@ -65,14 +65,15 @@ func (p *Pipeline) Handle(msg Message, snap *config.Snapshot, matchers []config.
 	}
 
 	// Gate 3 — Match (body first, then quoted text if no body match).
+	// mentionedBot only applies to the body — mentions live in the message's own ContextInfo.
 	normalizedBody := matcher.Normalize(msg.Text)
-	result := matcher.Match(normalizedBody, matchers)
+	result := matcher.Match(normalizedBody, msg.MentionedBot, matchers)
 
 	if result == nil && msg.QuotedBody != "" && msg.QuotedSenderJID != "" {
 		// Quoted text is eligible for matching. QuotedSenderJID == "" means the
 		// quoted author is the bot itself (quote-chain loop prevention).
 		normalizedQuoted := matcher.Normalize(msg.QuotedBody)
-		result = matcher.Match(normalizedQuoted, matchers)
+		result = matcher.Match(normalizedQuoted, false, matchers)
 	}
 
 	if result == nil {
@@ -144,6 +145,7 @@ type Message struct {
 	QuotedBody      string
 	QuotedSenderJID string
 	Timestamp       time.Time
+	MentionedBot    bool // true when the bot's JID appears in ContextInfo.MentionedJID
 }
 
 // RateLimiter enforces per-minute and per-hour send rate caps using sliding windows.

@@ -48,7 +48,7 @@ func validate(cfg Config) (*Snapshot, error) {
 		clusterMap[ac.Name] = ac.Answers
 	}
 
-	// CHECK 2 — resolve global matchers (word-length constraints + cluster refs)
+	// CHECK 2 — resolve global matchers (tagged-union validation, word-length constraints, cluster refs)
 	matcherNames := make(map[string]struct{}, len(cfg.Matchers))
 	globalMatchers := make(map[string]ResolvedMatcher, len(cfg.Matchers))
 	for _, m := range cfg.Matchers {
@@ -57,31 +57,66 @@ func validate(cfg Config) (*Snapshot, error) {
 		}
 		matcherNames[m.Name] = struct{}{}
 
-		for _, word := range m.Words {
-			runeCount := utf8.RuneCountInString(word)
-			switch m.Distance {
-			case 1:
-				if runeCount < 5 {
-					return nil, fmt.Errorf("matcher %q: word %q has %d runes but distance 1 requires ≥5 runes", m.Name, word, runeCount)
-				}
-			case 2:
-				if runeCount < 8 {
-					return nil, fmt.Errorf("matcher %q: word %q has %d runes but distance 2 requires ≥8 runes", m.Name, word, runeCount)
-				}
-			}
+		// Exactly one branch must be set.
+		if m.Levenshtein == nil && m.Mention == nil {
+			return nil, fmt.Errorf("matcher %q: must have either a levenshtein or mention block", m.Name)
+		}
+		if m.Levenshtein != nil && m.Mention != nil {
+			return nil, fmt.Errorf("matcher %q: levenshtein and mention are mutually exclusive", m.Name)
 		}
 
-		answers, ok := clusterMap[m.Cluster]
+		var (
+			kind        string
+			words       []string
+			distance    int
+			clusterName string
+			cooldownSec int
+		)
+
+		switch {
+		case m.Levenshtein != nil:
+			lv := m.Levenshtein
+			kind = "levenshtein"
+			words = lv.Words
+			distance = lv.Distance
+			clusterName = lv.Cluster
+			cooldownSec = lv.CooldownSec
+
+			if len(words) == 0 {
+				return nil, fmt.Errorf("matcher %q (levenshtein): words must not be empty", m.Name)
+			}
+			for _, word := range words {
+				runeCount := utf8.RuneCountInString(word)
+				switch distance {
+				case 1:
+					if runeCount < 5 {
+						return nil, fmt.Errorf("matcher %q: word %q has %d runes but distance 1 requires ≥5 runes", m.Name, word, runeCount)
+					}
+				case 2:
+					if runeCount < 8 {
+						return nil, fmt.Errorf("matcher %q: word %q has %d runes but distance 2 requires ≥8 runes", m.Name, word, runeCount)
+					}
+				}
+			}
+
+		case m.Mention != nil:
+			kind = "mention"
+			clusterName = m.Mention.Cluster
+			cooldownSec = m.Mention.CooldownSec
+		}
+
+		answers, ok := clusterMap[clusterName]
 		if !ok {
-			return nil, fmt.Errorf("matcher %q references unknown cluster %q", m.Name, m.Cluster)
+			return nil, fmt.Errorf("matcher %q references unknown cluster %q", m.Name, clusterName)
 		}
 
 		globalMatchers[m.Name] = ResolvedMatcher{
 			Name:             m.Name,
-			Words:            m.Words,
-			Distance:         m.Distance,
+			Kind:             kind,
+			Words:            words,
+			Distance:         distance,
 			Answers:          answers,
-			CooldownDuration: resolveCooldown(m.CooldownSec, 300),
+			CooldownDuration: resolveCooldown(cooldownSec, 300),
 		}
 	}
 

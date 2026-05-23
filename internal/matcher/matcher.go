@@ -58,39 +58,55 @@ func maxDistanceForRuneLen(runeLen int) int {
 	}
 }
 
-// Match tokenizes the already-normalized text and checks each token against
-// every configured matcher's keywords using Levenshtein distance. It returns
-// the first match found (one reply per message) or nil if nothing matches.
-func Match(text string, matchers []config.ResolvedMatcher) *Result {
+// Match iterates matchers in order and returns the first match.
+// mentionedBot should be true when the bot's JID appears in the message's
+// MentionedJID list — this activates "mention" kind matchers.
+// For quoted-text passes, always pass mentionedBot=false.
+func Match(text string, mentionedBot bool, matchers []config.ResolvedMatcher) *Result {
 	tokens := Tokenize(text)
-	if len(tokens) == 0 {
-		return nil
-	}
 
 	for i := range matchers {
 		m := &matchers[i]
 
-		// Pre-normalize keywords once per matcher (not per token).
-		normKeywords := make([]string, len(m.Words))
-		for j, w := range m.Words {
-			normKeywords[j] = Normalize(w)
-		}
+		switch m.Kind {
+		case "mention":
+			if mentionedBot {
+				return &Result{
+					MatcherName: m.Name,
+					MatchedWord: "@mention",
+					KeywordHit:  "@mention",
+					Distance:    0,
+				}
+			}
+			continue
 
-		for _, token := range tokens {
-			runeLen := len([]rune(token))
-			effectiveDist := m.Distance
-			if cap := maxDistanceForRuneLen(runeLen); cap < effectiveDist {
-				effectiveDist = cap
+		default: // "levenshtein"
+			if len(tokens) == 0 {
+				continue
 			}
 
-			for j, kw := range normKeywords {
-				dist := levenshtein.ComputeDistance(token, kw)
-				if dist <= effectiveDist {
-					return &Result{
-						MatcherName: m.Name,
-						MatchedWord: token,
-						KeywordHit:  m.Words[j],
-						Distance:    dist,
+			// Pre-normalize keywords once per matcher (not per token).
+			normKeywords := make([]string, len(m.Words))
+			for j, w := range m.Words {
+				normKeywords[j] = Normalize(w)
+			}
+
+			for _, token := range tokens {
+				runeLen := len([]rune(token))
+				effectiveDist := m.Distance
+				if cap := maxDistanceForRuneLen(runeLen); cap < effectiveDist {
+					effectiveDist = cap
+				}
+
+				for j, kw := range normKeywords {
+					dist := levenshtein.ComputeDistance(token, kw)
+					if dist <= effectiveDist {
+						return &Result{
+							MatcherName: m.Name,
+							MatchedWord: token,
+							KeywordHit:  m.Words[j],
+							Distance:    dist,
+						}
 					}
 				}
 			}

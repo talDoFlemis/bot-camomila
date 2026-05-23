@@ -16,6 +16,7 @@ func testMatchers() []config.ResolvedMatcher {
 	return []config.ResolvedMatcher{
 		{
 			Name:             "tax",
+			Kind:             "levenshtein",
 			Words:            []string{"sefaz"},
 			Distance:         1,
 			Answers:          []string{"calma, vai dar certo!"},
@@ -23,6 +24,7 @@ func testMatchers() []config.ResolvedMatcher {
 		},
 		{
 			Name:             "traffic",
+			Kind:             "levenshtein",
 			Words:            []string{"detran"},
 			Distance:         0,
 			Answers:          []string{"respira fundo, {REPLIED_USER}"},
@@ -220,6 +222,32 @@ func TestHandle_VariableSubstitution(t *testing.T) {
 	assert.True(t, d.Reply)
 	assert.Equal(t, "traffic", d.MatcherName)
 	assert.Contains(t, d.Answer, "Maria")
+}
+
+func TestHandle_MentionFires(t *testing.T) {
+	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	pipe, _ := newTestPipeline(&now)
+
+	msg := Message{
+		Text:         "oi bot",
+		SenderJID:    "user@s.whatsapp.net",
+		MentionedBot: true,
+	}
+	snap := testSnap()
+	snap.Location = nil
+
+	mentionMatcher := config.ResolvedMatcher{
+		Name:             "greet",
+		Kind:             "mention",
+		Answers:          []string{"olá!"},
+		CooldownDuration: 5 * time.Minute,
+	}
+	matchers := append([]config.ResolvedMatcher{mentionMatcher}, testMatchers()...)
+
+	d := pipe.Handle(msg, snap, matchers)
+	assert.True(t, d.Reply)
+	assert.Equal(t, "greet", d.MatcherName)
+	assert.Equal(t, "@mention", d.MatchedWord)
 }
 
 func TestHandle_GateOrder(t *testing.T) {

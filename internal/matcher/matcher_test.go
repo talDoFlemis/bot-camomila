@@ -84,10 +84,11 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
-// helper builds a ResolvedMatcher with sensible defaults.
+// helper builds a levenshtein ResolvedMatcher with sensible defaults.
 func mkMatcher(name string, words []string, distance int) config.ResolvedMatcher {
 	return config.ResolvedMatcher{
 		Name:             name,
+		Kind:             "levenshtein",
 		Words:            words,
 		Distance:         distance,
 		Answers:          []string{"reply"},
@@ -95,12 +96,23 @@ func mkMatcher(name string, words []string, distance int) config.ResolvedMatcher
 	}
 }
 
+// helper builds a mention ResolvedMatcher.
+func mkMentionMatcher(name string) config.ResolvedMatcher {
+	return config.ResolvedMatcher{
+		Name:             name,
+		Kind:             "mention",
+		Answers:          []string{"reply"},
+		CooldownDuration: 5 * time.Minute,
+	}
+}
+
 func TestMatch(t *testing.T) {
 	tests := []struct {
-		name     string
-		text     string
-		matchers []config.ResolvedMatcher
-		want     *Result
+		name         string
+		text         string
+		mentionedBot bool
+		matchers     []config.ResolvedMatcher
+		want         *Result
 	}{
 		{
 			name:     "Exact match distance 0",
@@ -207,16 +219,81 @@ func TestMatch(t *testing.T) {
 				Distance:    2,
 			},
 		},
+		// Mention matcher tests.
+		{
+			name:         "Mention fires when bot mentioned",
+			text:         "oi tudo bem",
+			mentionedBot: true,
+			matchers:     []config.ResolvedMatcher{mkMentionMatcher("greet")},
+			want: &Result{
+				MatcherName: "greet",
+				MatchedWord: "@mention",
+				KeywordHit:  "@mention",
+				Distance:    0,
+			},
+		},
+		{
+			name:         "Mention does not fire when bot not mentioned",
+			text:         "oi tudo bem",
+			mentionedBot: false,
+			matchers:     []config.ResolvedMatcher{mkMentionMatcher("greet")},
+			want:         nil,
+		},
+		{
+			name:         "Mention before levenshtein in order: mention wins",
+			text:         "sefaz",
+			mentionedBot: true,
+			matchers: []config.ResolvedMatcher{
+				mkMentionMatcher("greet"),
+				mkMatcher("tax", []string{"sefaz"}, 0),
+			},
+			want: &Result{MatcherName: "greet", MatchedWord: "@mention", KeywordHit: "@mention"},
+		},
+		{
+			name:         "Levenshtein before mention in order: levenshtein wins",
+			text:         "sefaz",
+			mentionedBot: true,
+			matchers: []config.ResolvedMatcher{
+				mkMatcher("tax", []string{"sefaz"}, 0),
+				mkMentionMatcher("greet"),
+			},
+			want: &Result{MatcherName: "tax", MatchedWord: "sefaz", KeywordHit: "sefaz"},
+		},
+		{
+			name:         "Mention skipped falls through to levenshtein",
+			text:         "sefaz",
+			mentionedBot: false,
+			matchers: []config.ResolvedMatcher{
+				mkMentionMatcher("greet"),
+				mkMatcher("tax", []string{"sefaz"}, 0),
+			},
+			want: &Result{MatcherName: "tax", MatchedWord: "sefaz", KeywordHit: "sefaz"},
+		},
+		{
+			name:         "Mention fires on empty text",
+			text:         "",
+			mentionedBot: true,
+			matchers:     []config.ResolvedMatcher{mkMentionMatcher("greet")},
+			want: &Result{
+				MatcherName: "greet",
+				MatchedWord: "@mention",
+				KeywordHit:  "@mention",
+				Distance:    0,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Match(tt.text, tt.matchers)
+			got := Match(tt.text, tt.mentionedBot, tt.matchers)
 			if tt.want == nil {
 				assert.Nil(t, got)
 			} else {
 				assert.NotNil(t, got)
 				assert.Equal(t, tt.want.MatcherName, got.MatcherName)
-				assert.Equal(t, tt.want.KeywordHit, got.KeywordHit)
+				assert.Equal(t, tt.want.MatchedWord, got.MatchedWord)
+				if tt.want.KeywordHit != "" {
+					assert.Equal(t, tt.want.KeywordHit, got.KeywordHit)
+				}
 				assert.Equal(t, tt.want.Distance, got.Distance)
 			}
 		})

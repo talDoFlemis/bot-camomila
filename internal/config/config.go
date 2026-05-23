@@ -24,12 +24,25 @@ type Cluster struct {
 }
 
 // MatcherConfig is one fuzzy-match rule as parsed from YAML.
+// Exactly one of Levenshtein or Mention must be set.
 type MatcherConfig struct {
-	Name        string   `yaml:"name"`
+	Name        string                   `yaml:"name"`
+	Levenshtein *LevenshteinMatcherConfig `yaml:"levenshtein,omitempty"`
+	Mention     *MentionMatcherConfig     `yaml:"mention,omitempty"`
+}
+
+// LevenshteinMatcherConfig holds fields for keyword fuzzy-matching.
+type LevenshteinMatcherConfig struct {
 	Words       []string `yaml:"words"`
 	Distance    int      `yaml:"distance"`
-	Cluster     string   `yaml:"cluster"`      // references AnswersCluster.Name
-	CooldownSec int      `yaml:"cooldown_sec"` // per-matcher cooldown in seconds (default 300 = 5 min)
+	Cluster     string   `yaml:"cluster"`
+	CooldownSec int      `yaml:"cooldown_sec"`
+}
+
+// MentionMatcherConfig holds fields for @mention-triggered matching.
+type MentionMatcherConfig struct {
+	Cluster     string `yaml:"cluster"`
+	CooldownSec int    `yaml:"cooldown_sec"`
 }
 
 // ListenerConfig binds a WhatsApp group to a set of matchers.
@@ -93,8 +106,9 @@ type ResolvedListener struct {
 // ResolvedMatcher is a matcher with its answer cluster already resolved.
 type ResolvedMatcher struct {
 	Name             string
-	Words            []string
-	Distance         int
+	Kind             string        // "levenshtein" | "mention"
+	Words            []string      // empty for mention matchers
+	Distance         int           // 0 for mention matchers
 	Answers          []string      // resolved from AnswersCluster at load time
 	CooldownDuration time.Duration // resolved from MatcherConfig.CooldownSec
 }
