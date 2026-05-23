@@ -24,7 +24,12 @@
 - whatsmeow pseudo-version pin may drift from the actual Go toolchain 1.26.3 requirement; verify go.mod compatibility before writing any code.
 - `modernc.org/sqlite` dialect must be registered as `"sqlite3"` for sqlstore compatibility; a mismatch will silently fail session writes.
 - First-pair `HistorySync` flood may fire old messages at the bot; timestamp-filter events to drop any message predating bot start time.
-**Plans:** TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 01-01-PLAN.md — Module deps + hexagonal directory scaffold + Config/Snapshot types + domain.Message + entrypoint stub
+- [ ] 01-02-PLAN.md — Config package: YAML load/validate + atomic Store + fsnotify Watcher with debounce + mtime fallback
+- [ ] 01-03-PLAN.md — WhatsApp adapter: waLog bridge + SQLite/sqlstore + QR pairing + lifecycle event handler
+- [ ] 01-04-PLAN.md — Entrypoint wiring: app.Run() composition root + graceful shutdown + operator verification
 
 ### Phase 2: Matcher Pipeline & Safe Dispatch
 **Goal:** Bot detects trigger words in group messages and replies with a calming answer, with cooldowns, quiet hours, rate limiting, and jitter all enforced as a single indivisible bundle.
@@ -77,7 +82,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Session & Config Foundations | 0/0 | Not started | - |
+| 1. Session & Config Foundations | 0/4 | Not started | - |
 | 2. Matcher Pipeline & Safe Dispatch | 0/0 | Not started | - |
 | 3. Owner Commands & Operability | 0/0 | Not started | - |
 | 4. Docker Packaging & Deploy | 0/0 | Not started | - |
