@@ -58,8 +58,11 @@ func validate(cfg Config) (*Snapshot, error) {
 	}
 
 	// CHECK 3 — timezone
+	var loc *time.Location
 	if cfg.Limits.QuietHours.Timezone != "" {
-		if _, err := time.LoadLocation(cfg.Limits.QuietHours.Timezone); err != nil {
+		var err error
+		loc, err = time.LoadLocation(cfg.Limits.QuietHours.Timezone)
+		if err != nil {
 			return nil, fmt.Errorf("limits.quiet_hours.timezone %q is invalid: %w", cfg.Limits.QuietHours.Timezone, err)
 		}
 	}
@@ -116,18 +119,29 @@ func validate(cfg Config) (*Snapshot, error) {
 		}
 
 		resolved = append(resolved, ResolvedMatcher{
-			Name:     m.Name,
-			Words:    m.Words,
-			Distance: m.Distance,
-			Answers:  answers,
+			Name:             m.Name,
+			Words:            m.Words,
+			Distance:         m.Distance,
+			Answers:          answers,
+			CooldownDuration: resolveCooldown(m.CooldownSec, 300),
 		})
 	}
 
 	return &Snapshot{
-		Scope:    cfg.Scope,
-		Limits:   cfg.Limits,
-		Log:      cfg.Log,
-		DB:       cfg.DB,
-		Matchers: resolved,
+		Scope:                cfg.Scope,
+		Limits:               cfg.Limits,
+		Log:                  cfg.Log,
+		DB:                   cfg.DB,
+		Matchers:             resolved,
+		Location:             loc,
+		UserCooldownDuration: resolveCooldown(cfg.Limits.UserCooldownSec, 900),
 	}, nil
+}
+
+// resolveCooldown converts a seconds value to time.Duration, using defaultSec if value is 0.
+func resolveCooldown(sec, defaultSec int) time.Duration {
+	if sec <= 0 {
+		sec = defaultSec
+	}
+	return time.Duration(sec) * time.Second
 }

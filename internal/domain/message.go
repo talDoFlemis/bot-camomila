@@ -14,8 +14,16 @@ type Message struct {
 	GroupJID string
 	// SenderJID is the sender's JID in non-AD form (no device suffix).
 	SenderJID string
+	// SenderPushName is the sender's display name (may be empty).
+	SenderPushName string
 	// Text is the plain text content of the message.
 	Text string
+	// QuotedBody is the plain text of the quoted message (empty if no quote).
+	QuotedBody string
+	// QuotedSenderJID is the JID of the quoted message's original sender (empty if no quote
+	// or if the quoted author is the bot itself, for quote-chain loop prevention).
+	QuotedSenderJID string
 	// Timestamp is when the message was sent.
 	Timestamp time.Time
 }
+
