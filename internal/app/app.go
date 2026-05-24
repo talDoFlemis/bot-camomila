@@ -65,7 +65,7 @@ func Run(ctx context.Context, configPath string, startTime time.Time, levelVar *
 	// Step 5 — Create and start the WhatsApp adapter.
 	// adapter.New() records startTime internally (time.Now() in New).
 	// The startTime parameter to Run() is for app-level logging only.
-	adapter := whatsappadapter.New(cfgStore, pipe)
+	adapter := whatsappadapter.New(cfgStore, pipe, ks)
 	if err := adapter.Start(ctx); err != nil {
 		return fmt.Errorf("whatsapp adapter start failed: %w", err)
 	}
