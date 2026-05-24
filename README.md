@@ -115,7 +115,18 @@ listeners:
     matchers: [mention_reply]
 ```
 
-## Building a binary
+## Running from a Pre-built Binary
+
+You can download a pre-built binary for your architecture from the [GitHub Releases](https://github.com/taldoflemis/bot-camomila/releases) page.
+
+```sh
+# Example for Linux AMD64
+wget https://github.com/taldoflemis/bot-camomila/releases/latest/download/bot-camomila-linux-amd64
+chmod +x bot-camomila-linux-amd64
+./bot-camomila-linux-amd64 --config config.yaml
+```
+
+## Building a binary from source
 
 ```sh
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bot ./cmd/bot
