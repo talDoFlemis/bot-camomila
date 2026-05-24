@@ -1,7 +1,7 @@
 ---
 milestone: v1.0
 version: 1.0.0
-updated: "2026-05-23T12:11:00Z"
+updated: "2026-05-24T00:00:00Z"
 ---
 
 # Roadmap
@@ -13,7 +13,7 @@ updated: "2026-05-23T12:11:00Z"
 
 - [x] Fuzzy-match keywords and reply with calming answers (Phase 2)
 - [x] Cooldowns, quiet hours, and rate limiting (Phase 2)
-- [ ] Owner kill switch via DM (Phase 3)
+- [ ] Owner kill switch via group command (Phase 3)
 - [ ] Docker packaging for VPS deployment (Phase 4)
 
 ---
@@ -51,17 +51,23 @@ updated: "2026-05-23T12:11:00Z"
 
 ### Phase 3: Owner Commands & Operability
 **Status:** ⬜ Not Started
-**Objective:** Operator can pause and resume the bot from a phone DM without restarting the process.
+**Objective:** Operator can pause and resume the bot from the configured group without restarting the process.
 **Depends on:** Phase 2
 **Requirements:** OWNER-01, OWNER-02, OWNER-03, OWNER-04, OWNER-05, OWNER-06
 
+**Note:** OWNER-02 DM constraint superseded by user decision D-07: commands trigger from the configured group, not DMs.
+
 **Acceptance criteria:**
-- `!pause` in an owner DM sets the kill switch; subsequent group messages are dropped and logged.
-- `!resume` clears the kill switch; bot acks both commands with a DM reply.
-- Commands from non-owner JIDs or in the group are silently ignored.
+- `!pause` from an authorized JID in the configured group sets the kill switch; subsequent group messages are dropped and logged.
+- `!resume` clears the kill switch; bot acks both commands with a threaded group reply.
+- Commands from non-owner JIDs are silently ignored (debug log only).
 - Hot-reload does not change the kill switch state.
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Config AllowAdminCommands extension + ownercommands package
+- [ ] 03-02-PLAN.md — Adapter ks wiring + handleOwnerCommand + sendCommandAck
 
 ---
 
@@ -87,7 +93,7 @@ updated: "2026-05-23T12:11:00Z"
 |-------|--------|-------|-----------|
 | 1. Session & Config Foundations | ✅ | 4/4 | 2026-05-23 |
 | 2. Matcher Pipeline & Safe Dispatch | ✅ | 6/6 | 2026-05-23 |
-| 3. Owner Commands & Operability | ⬜ | 0/0 | — |
+| 3. Owner Commands & Operability | ⬜ | 0/2 | — |
 | 4. Docker Packaging & Deploy | ⬜ | 0/0 | — |
 
 ---
