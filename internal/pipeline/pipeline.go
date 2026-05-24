@@ -147,7 +147,7 @@ func (p *Pipeline) handleCommand(ctx context.Context, msg domain.InboundMessage,
 	}
 
 	if !authorized {
-		slog.Debug("owner command denied",
+		slog.Warn("owner command denied",
 			"sender_jid", msg.SenderJID, "cmd", normalized)
 		return nil, true // was a command, but denied — don't pass to matcher
 	}
