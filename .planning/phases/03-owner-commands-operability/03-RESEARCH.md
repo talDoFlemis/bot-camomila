@@ -515,12 +515,12 @@ Step 2.6: No new external tools, services, or runtimes required. All dependencie
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **LID-based participant JIDs in GetGroupInfo**
+1. **LID-based participant JIDs in GetGroupInfo** — RESOLVED: Dual-JID comparison implemented in Plan 02 Task 2 `handleOwnerCommand()` admin loop.
    - What we know: `GroupParticipant.JID` is documented as "always equals either the LID or phone number" (verified in `types/group.go`). The existing codebase handles LID vs phone number for mention detection via `botJID` and `botLID` fields.
    - What's unclear: In practice, when a new WhatsApp client sends `evt.Info.Sender`, is it always the phone-number JID after `.ToNonAD()`, or could it be a LID? If it is a LID, comparing against `GroupParticipant.JID` (which may be phone-based in GetGroupInfo) could fail.
-   - Recommendation: For the admin path, compare against both `p.JID.ToNonAD().String()` and `p.LID.ToNonAD().String()` (when `p.LID` is not empty) to be safe. This mirrors the dual-JID pattern already used for `botJID` / `botLID` in `client.go`.
+   - Resolution: Compare both `p.JID.ToNonAD().String()` and `p.LID.ToNonAD().String()` (when `p.LID` is not empty) in the admin loop — mirrors the dual-JID pattern from `botJID`/`botLID` in `client.go`.
 
 ---
 

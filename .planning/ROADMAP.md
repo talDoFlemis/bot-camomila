@@ -21,11 +21,13 @@ updated: "2026-05-24T00:00:00Z"
 ## Phases
 
 ### Phase 1: Session & Config Foundations
+
 **Status:** ✅ Complete
 **Objective:** Bot connects to WhatsApp, authenticates via QR, persists its session, gates the configured group, and logs all lifecycle events — with no matching or replies yet.
 **Requirements:** SESSION-01, SESSION-02, SESSION-03, SESSION-04, SESSION-05, CONFIG-01, CONFIG-02, CONFIG-03, CONFIG-04, CONFIG-05, SCOPE-01, SCOPE-02, SCOPE-03, OBSERV-01, OBSERV-03
 
 **Plans:**
+
 - [x] Plan 1.1: Module deps + hexagonal directory scaffold + Config/Snapshot types + domain.Message + entrypoint stub
 - [x] Plan 1.2: Config package: YAML load/validate + atomic Store + fsnotify Watcher with debounce + mtime fallback
 - [x] Plan 1.3: WhatsApp adapter: waLog bridge + SQLite/sqlstore + QR pairing + lifecycle event handler
@@ -34,12 +36,14 @@ updated: "2026-05-24T00:00:00Z"
 ---
 
 ### Phase 2: Matcher Pipeline & Safe Dispatch
+
 **Status:** ✅ Complete
 **Objective:** Bot detects trigger words in group messages and replies with a calming answer, with cooldowns, quiet hours, rate limiting, and jitter all enforced as a single indivisible bundle.
 **Depends on:** Phase 1
 **Requirements:** MATCH-01, MATCH-02, MATCH-03, MATCH-04, MATCH-05, REPLY-01, REPLY-02, REPLY-03, REPLY-04, REPLY-05, COOLDOWN-01, COOLDOWN-02, COOLDOWN-03, COOLDOWN-04, QUIET-01, QUIET-02, QUIET-03, OBSERV-02
 
 **Plans:**
+
 - [x] Plan 2.1: Dependencies + domain/config type extensions (wave 1)
 - [x] Plan 2.2: Fuzzy matcher engine — Levenshtein, NFC, tokenization (wave 1)
 - [x] Plan 2.3: Cooldown engine — per-matcher + per-user with injectable clock (wave 1)
@@ -50,6 +54,7 @@ updated: "2026-05-24T00:00:00Z"
 ---
 
 ### Phase 3: Owner Commands & Operability
+
 **Status:** ⬜ Not Started
 **Objective:** Operator can pause and resume the bot from the configured group without restarting the process.
 **Depends on:** Phase 2
@@ -58,6 +63,7 @@ updated: "2026-05-24T00:00:00Z"
 **Note:** OWNER-02 DM constraint superseded by user decision D-07: commands trigger from the configured group, not DMs.
 
 **Acceptance criteria:**
+
 - `!pause` from an authorized JID in the configured group sets the kill switch; subsequent group messages are dropped and logged.
 - `!resume` clears the kill switch; bot acks both commands with a threaded group reply.
 - Commands from non-owner JIDs are silently ignored (debug log only).
@@ -66,18 +72,25 @@ updated: "2026-05-24T00:00:00Z"
 **Plans:** 2 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 03-01-PLAN.md — Config AllowAdminCommands extension + ownercommands package
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-02-PLAN.md — Adapter ks wiring + handleOwnerCommand + sendCommandAck
 
 ---
 
 ### Phase 4: Docker Packaging & Deploy
+
 **Status:** ⬜ Not Started
 **Objective:** Bot ships as a minimal distroless container image ready for VPS deployment.
 **Depends on:** Phase 3
 **Requirements:** DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05
 
 **Acceptance criteria:**
+
 - Multi-stage image with distroless runtime ≤25 MB.
 - docker compose starts the bot with mounted volumes; graceful shutdown within 10 s.
 - .dockerignore excludes *.sqlite* files.
