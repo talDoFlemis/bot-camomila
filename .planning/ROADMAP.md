@@ -69,12 +69,12 @@ updated: "2026-05-24T00:00:00Z"
 - Commands from non-owner JIDs are silently ignored (debug log only).
 - Hot-reload does not change the kill switch state.
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Config AllowAdminCommands extension + ownercommands package
+- [x] 03-01-PLAN.md — Config AllowAdminCommands extension + ownercommands package
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -106,7 +106,7 @@ Plans:
 |-------|--------|-------|-----------|
 | 1. Session & Config Foundations | ✅ | 4/4 | 2026-05-23 |
 | 2. Matcher Pipeline & Safe Dispatch | ✅ | 6/6 | 2026-05-23 |
-| 3. Owner Commands & Operability | ⬜ | 0/2 | — |
+| 3. Owner Commands & Operability | 1/2 | In Progress|  |
 | 4. Docker Packaging & Deploy | ⬜ | 0/0 | — |
 
 ---
