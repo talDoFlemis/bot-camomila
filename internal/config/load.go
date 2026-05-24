@@ -159,9 +159,10 @@ func validate(cfg Config) (*Snapshot, error) {
 		}
 
 		resolvedListeners = append(resolvedListeners, ResolvedListener{
-			GroupJID:  l.GroupJID,
-			OwnerJIDs: l.OwnerJIDs,
-			Matchers:  listenerMatchers,
+			GroupJID:           l.GroupJID,
+			OwnerJIDs:          l.OwnerJIDs,
+			AllowAdminCommands: l.AllowAdminCommands,
+			Matchers:           listenerMatchers,
 		})
 	}
 
