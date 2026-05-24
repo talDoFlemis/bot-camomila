@@ -14,7 +14,8 @@ When a configured topic flares up in the target group, the bot reliably replies 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- [x] Owner kill switch: `!pause` / `!resume` from configured group pauses/resumes bot without restart (Validated in Phase 3: owner-commands-operability)
+- [x] Hardcoded owner JID list in YAML; LID addressing handled via GetGroupInfo resolution (Validated in Phase 3)
 
 ### Active
 
@@ -92,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-22 after initialization*
+*Last updated: 2026-05-24 after Phase 3 (owner-commands-operability) complete*
