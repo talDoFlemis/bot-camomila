@@ -166,52 +166,87 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 // Unauthorized senders are silently dropped at debug level (T-03-02-05).
 // Authorized commands trigger ownercommands.Handle() and launch sendCommandAck() as a goroutine.
 func (a *Adapter) handleOwnerCommand(evt *events.Message, snap *config.Snapshot, listener *config.ResolvedListener, cmd string) {
-	senderJID := evt.Info.Sender.ToNonAD().String()
+	// senderRaw is the JID as reported by whatsmeow: phone JID on legacy clients,
+	// LID (e.g. 124068804186353@lid) on modern clients using LID addressing.
+	senderRaw := evt.Info.Sender.ToNonAD().String()
 
-	// Tier 1: direct JID match against owner allowlist.
+	// Tier 1: direct JID match (fast path — no network call).
 	authorized := false
 	for _, ownerJID := range listener.OwnerJIDs {
-		if ownerJID == senderJID {
+		if ownerJID == senderRaw {
 			authorized = true
 			break
 		}
 	}
 
-	// Tier 2: optional group-admin lookup (fail-closed on error — T-03-02-02).
-	if !authorized && listener.AllowAdminCommands {
+	// Modern WhatsApp clients use LID addressing in group messages. Operator configs
+	// store phone-number JIDs (e.g. 55119@s.whatsapp.net), not LIDs. When direct
+	// match fails, call GetGroupInfo once to resolve LID→phone and optionally check
+	// admin status. Both uses share the single network call (fail-closed on error).
+	senderPhone := "" // resolved phone JID, empty if resolution fails or not needed
+	if !authorized && (strings.HasSuffix(senderRaw, "@lid") || listener.AllowAdminCommands) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		groupInfo, err := a.client.GetGroupInfo(ctx, evt.Info.Chat)
 		if err != nil {
-			slog.Warn("GetGroupInfo failed for admin check",
+			slog.Warn("GetGroupInfo failed for owner command auth",
 				"err", err,
 				"group_jid", evt.Info.Chat.String(),
 			)
-			// fail-closed: do NOT set authorized = true on error
+			// fail-closed: cannot verify identity without group info
 		} else {
+			// Resolve LID → phone JID via participant list.
 			for _, p := range groupInfo.Participants {
-				if !p.IsAdmin && !p.IsSuperAdmin {
-					continue
-				}
-				if p.JID.ToNonAD().String() == senderJID {
-					authorized = true
-					break
-				}
-				// Also compare LID when non-empty (newer WhatsApp clients — RESEARCH.md Open Question 1).
-				if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderJID {
-					authorized = true
+				if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderRaw {
+					senderPhone = p.JID.ToNonAD().String()
 					break
 				}
 			}
+
+			// Retry owner check with resolved phone JID.
+			if senderPhone != "" {
+				for _, ownerJID := range listener.OwnerJIDs {
+					if ownerJID == senderPhone {
+						authorized = true
+						break
+					}
+				}
+			}
+
+			// Tier 2: admin check (AllowAdminCommands — T-03-02-02).
+			if !authorized && listener.AllowAdminCommands {
+				checkJID := senderPhone
+				if checkJID == "" {
+					checkJID = senderRaw
+				}
+				for _, p := range groupInfo.Participants {
+					if !p.IsAdmin && !p.IsSuperAdmin {
+						continue
+					}
+					if p.JID.ToNonAD().String() == checkJID {
+						authorized = true
+						break
+					}
+					if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderRaw {
+						authorized = true
+						break
+					}
+				}
+			}
 		}
+	}
+
+	logJID := senderRaw
+	if senderPhone != "" {
+		logJID = senderPhone
 	}
 
 	if !authorized {
 		slog.Debug("owner command denied",
 			"event", "dispatch",
 			"reason", "owner_command_denied",
-			"sender_jid", senderJID,
+			"sender_jid", logJID,
 			"cmd", cmd,
 		)
 		return
@@ -221,7 +256,7 @@ func (a *Adapter) handleOwnerCommand(evt *events.Message, snap *config.Snapshot,
 	slog.Info("owner command executed",
 		"event", "dispatch",
 		"reason", "owner_command",
-		"sender_jid", senderJID,
+		"sender_jid", logJID,
 		"cmd", cmd,
 		"ack", ackText,
 	)
