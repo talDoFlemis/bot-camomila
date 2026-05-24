@@ -85,8 +85,21 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		return
 	}
 
+	// Command short-circuit — owner commands (!pause / !resume) must be checked before
+	// the is_from_me gate because the bot owner operates on the same WA account as the
+	// bot process; whatsmeow sets IsFromMe=true for all messages from that account
+	// (any companion device). Checking commands here ensures !pause / !resume reach the
+	// handler even when sent from the owner's own phone.
+	text := extractText(evt.Message)
+	normalized := strings.TrimSpace(strings.ToLower(text))
+	if normalized == "!pause" || normalized == "!resume" {
+		a.handleOwnerCommand(evt, snap, listener, normalized)
+		return
+	}
+
 	// Gate 2 — self-message filter (SCOPE-02).
-	// Drop messages sent by the bot itself to prevent self-reply loops.
+	// Drop messages sent by the bot account to prevent self-reply loops.
+	// This runs after the command short-circuit so owner commands are not blocked.
 	if evt.Info.IsFromMe {
 		slog.Debug("message dropped: from self",
 			"event", "scope_drop",
@@ -97,20 +110,11 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 
 	// Gate 3 — text-only filter (SCOPE-03).
 	// Drop non-text message types (images, stickers, audio, etc.) before matching.
-	text := extractText(evt.Message)
 	if text == "" {
 		slog.Debug("message dropped: non-text",
 			"event", "scope_drop",
 			"reason", "non_text",
 		)
-		return
-	}
-
-	// Command short-circuit — owner commands (!pause / !resume) are handled before
-	// the pipeline so that !resume works even when the kill switch is active (OWNER-01).
-	normalized := strings.TrimSpace(strings.ToLower(text))
-	if normalized == "!pause" || normalized == "!resume" {
-		a.handleOwnerCommand(evt, snap, listener, normalized)
 		return
 	}
 
