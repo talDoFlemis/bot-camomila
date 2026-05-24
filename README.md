@@ -34,13 +34,12 @@ log:
 
 listeners:
   - group_jid: "asdfasdfasdfasdf@g.us"
-    owner_jids: ["558599999999@s.whatsapp.net"]
+    allow_admin_commands: true
     matchers:
       - mention
       - little
 
   - group_jid: "qwerqwerqwerqwer@g.us"
-    owner_jids: ["5585999999@s.whatsapp.net"]
     matchers:
       - mention
 
@@ -143,7 +142,7 @@ Edit `config.yaml` while the bot is running — changes take effect within ~500 
 
 ## Owner commands
 
-Send a DM to the bot's number from a JID listed in `owner_jids`:
+Commands can be sent directly from the bot's own WhatsApp account (via a paired companion device or the main phone), or by group admins if `allow_admin_commands: true` is configured for the group.
 
 | Command   | Effect                    |
 | --------- | ------------------------- |
@@ -155,3 +154,4 @@ Send a DM to the bot's number from a JID listed in `owner_jids`:
 ```sh
 go test ./...
 ```
+

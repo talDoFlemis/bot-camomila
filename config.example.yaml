@@ -5,14 +5,12 @@ log:
 
 listeners:
   - group_jid: "asdfasdfasdfasdf@g.us"
-    owner_jids: ["558599999999@s.whatsapp.net"]
     allow_admin_commands: false # allow group admins to also issue !pause / !resume (default: false)
     matchers:
       - mention
       - little
 
   - group_jid: "qwerqwerqwerqwer@g.us"
-    owner_jids: ["5585999999@s.whatsapp.net"]
     allow_admin_commands: false # allow group admins to also issue !pause / !resume (default: false)
     matchers:
       - mention

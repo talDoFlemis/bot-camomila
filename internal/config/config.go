@@ -26,7 +26,7 @@ type Cluster struct {
 // MatcherConfig is one fuzzy-match rule as parsed from YAML.
 // Exactly one of Levenshtein or Mention must be set.
 type MatcherConfig struct {
-	Name        string                   `yaml:"name"`
+	Name        string                    `yaml:"name"`
 	Levenshtein *LevenshteinMatcherConfig `yaml:"levenshtein,omitempty"`
 	Mention     *MentionMatcherConfig     `yaml:"mention,omitempty"`
 }
@@ -48,7 +48,6 @@ type MentionMatcherConfig struct {
 // ListenerConfig binds a WhatsApp group to a set of matchers.
 type ListenerConfig struct {
 	GroupJID           string   `yaml:"group_jid"`
-	OwnerJIDs          []string `yaml:"owner_jids"`
 	AllowAdminCommands bool     `yaml:"allow_admin_commands"` // when true, group admins may also issue !pause / !resume
 	Matchers           []string `yaml:"matchers"`             // ordered list of MatcherConfig.Name references
 }
@@ -100,7 +99,6 @@ type Snapshot struct {
 // ResolvedListener is a listener with its matchers fully resolved.
 type ResolvedListener struct {
 	GroupJID           string
-	OwnerJIDs          []string
 	AllowAdminCommands bool // propagated from ListenerConfig; false by default
 	Matchers           []ResolvedMatcher
 }

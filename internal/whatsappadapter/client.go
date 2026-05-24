@@ -8,16 +8,17 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/mdp/qrterminal/v3"
 	whatsmeow "go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"modernc.org/sqlite"
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
-	"github.com/taldoflemis/bot-camomila/internal/killswitch"
-	"github.com/taldoflemis/bot-camomila/internal/pipeline"
+	"github.com/taldoflemis/bot-camomila/internal/domain"
 )
 
 func init() {
@@ -33,24 +34,52 @@ type Adapter struct {
 	client    *whatsmeow.Client
 	db        *sql.DB
 	cfg       *config.Store
-	pipeline  *pipeline.Pipeline
-	ks        *killswitch.Switch  // kill switch shared with pipeline; never re-created on hot-reload (OWNER-06)
+	inCh      chan<- domain.InboundMessage
+	outCh     <-chan domain.OutboundReply
 	cancel    context.CancelFunc // stored to signal shutdown from event handler (never call Disconnect from handler)
 	startTime time.Time          // recorded in New() before any Connect; used for HistorySync flood filter (D-07)
 	botJID    string             // bot's own JID in non-AD form; set after Connect() for quote-chain prevention
 	botLID    string             // bot's LID (@lid) used in mention MentionedJID on newer WhatsApp clients
+	pending   sync.Map           // map[string]*events.Message for QuotedMessage preservation
 }
 
 // New returns an uninitialised Adapter. startTime is recorded here — before any Connect
 // call — so that the HistorySync flood filter (D-07) can drop all replayed messages
 // predating bot startup.
-func New(cfg *config.Store, pipe *pipeline.Pipeline, ks *killswitch.Switch) *Adapter {
+func New(cfg *config.Store, inCh chan<- domain.InboundMessage, outCh <-chan domain.OutboundReply) *Adapter {
 	return &Adapter{
 		cfg:       cfg,
-		pipeline:  pipe,
-		ks:        ks,
+		inCh:      inCh,
+		outCh:     outCh,
 		startTime: time.Now(),
 	}
+}
+
+// IsGroupAdmin implements domain.AdminChecker using whatsmeow GetGroupInfo.
+func (a *Adapter) IsGroupAdmin(ctx context.Context, groupJID, senderJID string) (bool, error) {
+	if a.client == nil {
+		return false, fmt.Errorf("whatsapp client not initialized")
+	}
+	jid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return false, err
+	}
+	groupInfo, err := a.client.GetGroupInfo(ctx, jid)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range groupInfo.Participants {
+		if !p.IsAdmin && !p.IsSuperAdmin {
+			continue
+		}
+		if p.JID.ToNonAD().String() == senderJID {
+			return true, nil
+		}
+		if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderJID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Start opens the SQLite session store, runs a PRAGMA integrity_check, initialises the

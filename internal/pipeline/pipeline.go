@@ -3,6 +3,8 @@
 package pipeline
 
 import (
+	"context"
+	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -10,8 +12,10 @@ import (
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
 	"github.com/taldoflemis/bot-camomila/internal/cooldown"
+	"github.com/taldoflemis/bot-camomila/internal/domain"
 	"github.com/taldoflemis/bot-camomila/internal/killswitch"
 	"github.com/taldoflemis/bot-camomila/internal/matcher"
+	"github.com/taldoflemis/bot-camomila/internal/ownercommands"
 	"github.com/taldoflemis/bot-camomila/internal/quiethours"
 )
 
@@ -26,32 +30,145 @@ type Decision struct {
 
 // Pipeline composes the full gate chain for message handling.
 type Pipeline struct {
-	killSwitch  *killswitch.Switch
-	cooldowns   *cooldown.Tracker
-	rateLimiter *RateLimiter
-	rng         *rand.Rand
-	clock       func() time.Time
+	cfg          *config.Store
+	adminChecker domain.AdminChecker
+	killSwitch   *killswitch.Switch
+	cooldowns    *cooldown.Tracker
+	rateLimiter  *RateLimiter
+	rng          *rand.Rand
+	clock        func() time.Time
 }
 
 // New creates a Pipeline with the given gate components.
 // If clock is nil, time.Now is used.
-func New(ks *killswitch.Switch, cd *cooldown.Tracker, rl *RateLimiter, clock func() time.Time) *Pipeline {
+func New(cfg *config.Store, ac domain.AdminChecker, ks *killswitch.Switch, cd *cooldown.Tracker, rl *RateLimiter, clock func() time.Time) *Pipeline {
 	if clock == nil {
 		clock = time.Now
 	}
 	return &Pipeline{
-		killSwitch:  ks,
-		cooldowns:   cd,
-		rateLimiter: rl,
-		rng:         rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(time.Now().UnixNano()>>1))),
-		clock:       clock,
+		cfg:          cfg,
+		adminChecker: ac,
+		killSwitch:   ks,
+		cooldowns:    cd,
+		rateLimiter:  rl,
+		rng:          rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(time.Now().UnixNano()>>1))),
+		clock:        clock,
 	}
+}
+
+// Run is the active actor loop that processes incoming messages.
+func (p *Pipeline) Run(ctx context.Context, in <-chan domain.InboundMessage, out chan<- domain.OutboundReply) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-in:
+			if !ok {
+				return
+			}
+			snap := p.cfg.Get()
+
+			// Scope gate — listener lookup.
+			listener := findListener(snap.Listeners, msg.GroupJID)
+			if listener == nil {
+				slog.Debug("message dropped: group not configured",
+					"event", "scope_drop", "group_jid", msg.GroupJID)
+				continue
+			}
+
+			// Gate 0 — Owner command (before kill switch).
+			if reply, handled := p.handleCommand(ctx, msg, listener); handled {
+				if reply != nil {
+					out <- *reply
+				}
+				continue
+			}
+
+			// Gate 1 - filter is from me messages
+			if msg.IsFromMe {
+				slog.Debug(
+					"message dropped: from self",
+					"event", "scope_drop",
+					"reason", "is_from_me",
+				)
+				continue
+			}
+
+			// Gates 2-7 — normal pipeline.
+			decision := p.Handle(msg, snap, listener.Matchers)
+
+			slog.Info(
+				"dispatch decision",
+				"event", "dispatch",
+				"msg_id", msg.ID,
+				"sender_jid", msg.SenderJID,
+				"matcher", decision.MatcherName,
+				"matched_word", decision.MatchedWord,
+				"reply", decision.Reply,
+				"drop_reason", decision.DropReason,
+			)
+
+			if decision.Reply {
+				out <- domain.OutboundReply{
+					InReplyTo:   msg.ID,
+					ChatJID:     msg.GroupJID,
+					SenderJID:   msg.SenderJID,
+					Answer:      decision.Answer,
+					MatcherName: decision.MatcherName,
+					MatchedWord: decision.MatchedWord,
+				}
+			}
+		}
+	}
+}
+
+// handleCommand checks for !pause/!resume, authorizes the sender, and toggles
+// the kill switch. Returns (reply, true) if the message was a command (whether
+// authorized or not). Returns (nil, false) if the message is not a command.
+func (p *Pipeline) handleCommand(ctx context.Context, msg domain.InboundMessage, listener *config.ResolvedListener) (*domain.OutboundReply, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(msg.Text))
+	if normalized != "!pause" && normalized != "!resume" {
+		return nil, false // not a command
+	}
+
+	// Tier 1: IsFromMe
+	authorized := msg.IsFromMe
+
+	// Tier 2: optional group-admin lookup (fail-closed on error).
+	if !authorized && listener.AllowAdminCommands && p.adminChecker != nil {
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		isAdmin, err := p.adminChecker.IsGroupAdmin(checkCtx, msg.GroupJID, msg.SenderJID)
+		if err != nil {
+			slog.Warn("admin check failed; denying command", "err", err)
+		} else {
+			authorized = isAdmin
+		}
+	}
+
+	if !authorized {
+		slog.Debug("owner command denied",
+			"sender_jid", msg.SenderJID, "cmd", normalized)
+		return nil, true // was a command, but denied — don't pass to matcher
+	}
+
+	ackText := ownercommands.Handle(normalized, p.killSwitch)
+	slog.Info("owner command executed",
+		"sender_jid", msg.SenderJID, "cmd", normalized, "ack", ackText)
+
+	return &domain.OutboundReply{
+		InReplyTo:    msg.ID,
+		ChatJID:      msg.GroupJID,
+		SenderJID:    msg.SenderJID,
+		Answer:       ackText,
+		IsCommandAck: true,
+	}, true
 }
 
 // Handle runs the full gate chain on a message and returns a Decision.
 // matchers is the resolved matcher list for the listener that received this message.
 // The gate order is: kill switch → quiet hours → match → cooldown → rate cap → pick answer.
-func (p *Pipeline) Handle(msg Message, snap *config.Snapshot, matchers []config.ResolvedMatcher) Decision {
+func (p *Pipeline) Handle(msg domain.InboundMessage, snap *config.Snapshot, matchers []config.ResolvedMatcher) Decision {
 	now := p.clock()
 
 	// Gate 1 — Kill switch.
@@ -116,6 +233,16 @@ func (p *Pipeline) Handle(msg Message, snap *config.Snapshot, matchers []config.
 	}
 }
 
+// findListener returns the ResolvedListener for the given group JID, or nil if not configured.
+func findListener(listeners []config.ResolvedListener, groupJID string) *config.ResolvedListener {
+	for i := range listeners {
+		if listeners[i].GroupJID == groupJID {
+			return &listeners[i]
+		}
+	}
+	return nil
+}
+
 // findMatcher looks up a ResolvedMatcher by name.
 func findMatcher(matchers []config.ResolvedMatcher, name string) *config.ResolvedMatcher {
 	for i := range matchers {
@@ -131,21 +258,6 @@ func substituteVars(answer, matchedWord, pushName string) string {
 	answer = strings.ReplaceAll(answer, "{MATCHED_WORD}", matchedWord)
 	answer = strings.ReplaceAll(answer, "{REPLIED_USER}", pushName)
 	return answer
-}
-
-// Message is the pipeline's view of an inbound message. This mirrors domain.Message
-// but is defined here to avoid a circular import. The adapter constructs this from
-// domain.Message before calling Handle.
-type Message struct {
-	ID              string
-	GroupJID        string
-	SenderJID       string
-	SenderPushName  string
-	Text            string
-	QuotedBody      string
-	QuotedSenderJID string
-	Timestamp       time.Time
-	MentionedBot    bool // true when the bot's JID appears in ContextInfo.MentionedJID
 }
 
 // RateLimiter enforces per-minute and per-hour send rate caps using sliding windows.

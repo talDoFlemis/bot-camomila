@@ -136,13 +136,6 @@ func validate(cfg Config) (*Snapshot, error) {
 			return nil, fmt.Errorf("listeners[%d].group_jid must be a group JID (got server %q)", i, jid.Server)
 		}
 
-		// owner_jids must each parse as valid JIDs
-		for j, raw := range l.OwnerJIDs {
-			if _, err := types.ParseJID(raw); err != nil {
-				return nil, fmt.Errorf("listeners[%d].owner_jids[%d] %q is invalid: %w", i, j, raw, err)
-			}
-		}
-
 		// at least one matcher reference required
 		if len(l.Matchers) == 0 {
 			return nil, fmt.Errorf("listeners[%d] (group %q): at least one matcher is required", i, l.GroupJID)
@@ -160,7 +153,6 @@ func validate(cfg Config) (*Snapshot, error) {
 
 		resolvedListeners = append(resolvedListeners, ResolvedListener{
 			GroupJID:           l.GroupJID,
-			OwnerJIDs:          l.OwnerJIDs,
 			AllowAdminCommands: l.AllowAdminCommands,
 			Matchers:           listenerMatchers,
 		})

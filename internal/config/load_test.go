@@ -25,7 +25,6 @@ matchers:
       cooldown_sec: 300
 listeners:
   - group_jid: "120363428452727309@g.us"
-    owner_jids: ["558591074044@s.whatsapp.net"]
     matchers: [sefaz]
 db:
   path: "./test.sqlite"
@@ -59,7 +58,6 @@ matchers:
       cooldown_sec: 300
 listeners:
   - group_jid: "120363428452727309@g.us"
-    owner_jids: ["558591074044@s.whatsapp.net"]
     allow_admin_commands: true
     matchers: [sefaz]
 db:

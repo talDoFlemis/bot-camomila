@@ -21,18 +21,10 @@
             "description": "WhatsApp group JID (must end in @g.us). The bot only processes messages from this group.",
             "examples": ["120363428452727309@g.us"]
           },
-          "owner_jids": {
-            "type": "array",
-            "description": "List of WhatsApp JIDs allowed to send owner commands (!pause / !resume).",
-            "items": {
-              "type": "string",
-              "examples": ["558591074044@s.whatsapp.net"]
-            },
-            "default": []
-          },
+
           "allow_admin_commands": {
             "type": "boolean",
-            "description": "When true, WhatsApp group admins and super-admins may also issue !pause / !resume commands in addition to owner_jids.",
+            "description": "When true, WhatsApp group admins and super-admins may issue !pause / !resume commands.",
             "default": false
           },
           "matchers": {

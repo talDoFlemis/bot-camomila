@@ -5,16 +5,14 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
-	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/taldoflemis/bot-camomila/internal/config"
-	"github.com/taldoflemis/bot-camomila/internal/ownercommands"
-	"github.com/taldoflemis/bot-camomila/internal/pipeline"
+	"github.com/taldoflemis/bot-camomila/internal/domain"
 )
 
 // onEvent is the single event handler registered with the whatsmeow client via
@@ -36,7 +34,8 @@ func (a *Adapter) onEvent(evt interface{}) {
 
 	case *events.LoggedOut:
 		// Permanent disconnect — session is invalidated (SESSION-04).
-		slog.Error("whatsapp logged out",
+		slog.Error(
+			"whatsapp logged out",
 			"event", "logged_out",
 			"on_connect", v.OnConnect,
 			"reason", v.Reason.String(),
@@ -49,7 +48,8 @@ func (a *Adapter) onEvent(evt interface{}) {
 		a.cancel() // same treatment as LoggedOut
 
 	case *events.PairSuccess:
-		slog.Info("whatsapp paired successfully",
+		slog.Info(
+			"whatsapp paired successfully",
 			"event", "pair_success",
 			"jid", v.ID.String(),
 		)
@@ -59,68 +59,29 @@ func (a *Adapter) onEvent(evt interface{}) {
 	}
 }
 
-// handleMessage applies the gate pipeline to a raw WhatsApp message event.
-// It runs the adapter-level gates (history sync, scope, self-message, text-only),
-// constructs a domain message, delegates to the Pipeline, and sends a threaded
-// reply with jitter if the pipeline decides to fire.
+// handleMessage runs the transport-specific gates and forwards the message to the pipeline.
 func (a *Adapter) handleMessage(evt *events.Message) {
-	// Single atomic load — hold snap for the full duration of this call (CONFIG-03).
-	snap := a.cfg.Get()
-
-	// Gate 0 — HistorySync timestamp filter (D-07, FIRST gate — cheapest elimination).
-	// On first QR pair, whatsmeow replays weeks of group history. Drop all messages
-	// predating bot startup so historical messages never reach the matcher pipeline.
+	// Gate 0 — HistorySync timestamp filter (adapter-specific).
 	if evt.Info.Timestamp.Before(a.startTime) {
 		return
 	}
 
-	// Gate 1 — listener lookup (SCOPE-01).
-	// Only process messages from a configured group; drop everything else silently.
-	listener := findListener(snap.Listeners, evt.Info.Chat.String())
-	if listener == nil {
-		slog.Debug("message dropped: group not configured",
-			"event", "scope_drop",
-			"group_jid", evt.Info.Chat.String(),
-		)
-		return
-	}
-
-	// Command short-circuit — owner commands (!pause / !resume) must be checked before
-	// the is_from_me gate because the bot owner operates on the same WA account as the
-	// bot process; whatsmeow sets IsFromMe=true for all messages from that account
-	// (any companion device). Checking commands here ensures !pause / !resume reach the
-	// handler even when sent from the owner's own phone.
+	// Gate 1 — Text-only filter (adapter-specific).
 	text := extractText(evt.Message)
-	normalized := strings.TrimSpace(strings.ToLower(text))
-	if normalized == "!pause" || normalized == "!resume" {
-		a.handleOwnerCommand(evt, snap, listener, normalized)
-		return
-	}
-
-	// Gate 2 — self-message filter (SCOPE-02).
-	// Drop messages sent by the bot account to prevent self-reply loops.
-	// This runs after the command short-circuit so owner commands are not blocked.
-	if evt.Info.IsFromMe {
-		slog.Debug("message dropped: from self",
-			"event", "scope_drop",
-			"reason", "is_from_me",
-		)
-		return
-	}
-
-	// Gate 3 — text-only filter (SCOPE-03).
-	// Drop non-text message types (images, stickers, audio, etc.) before matching.
 	if text == "" {
-		slog.Debug("message dropped: non-text",
+		slog.Debug(
+			"message dropped: non-text",
 			"event", "scope_drop",
 			"reason", "non_text",
 		)
 		return
 	}
 
-	// Construct pipeline.Message with all Phase 2 fields.
+	// Store original event for reply threading (QuotedMessage preservation).
+	a.pending.Store(evt.Info.ID, evt)
+
 	quotedBody, quotedSender := extractQuotedText(evt.Message, a.botJID)
-	msg := pipeline.Message{
+	a.inCh <- domain.InboundMessage{
 		ID:              evt.Info.ID,
 		GroupJID:        evt.Info.Chat.String(),
 		SenderJID:       evt.Info.Sender.ToNonAD().String(),
@@ -130,150 +91,69 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		QuotedSenderJID: quotedSender,
 		Timestamp:       evt.Info.Timestamp,
 		MentionedBot:    isBotMentioned(evt.Message, a.botJID, a.botLID),
+		IsFromMe:        evt.Info.IsFromMe,
 	}
-
-	// Run the pipeline with this listener's matchers.
-	decision := a.pipeline.Handle(msg, snap, listener.Matchers)
-
-	// Log every dispatch decision (OBSERV-02).
-	slog.Info("dispatch decision",
-		"event", "dispatch",
-		"msg_id", msg.ID,
-		"sender_jid", msg.SenderJID,
-		"matcher", decision.MatcherName,
-		"matched_word", decision.MatchedWord,
-		"reply", decision.Reply,
-		"drop_reason", decision.DropReason,
-	)
-
-	if !decision.Reply {
-		return
-	}
-
-	// Send reply in a goroutine with jitter (REPLY-04).
-	// Do NOT block the event handler — whatsmeow holds a dispatch lock.
-	go a.sendReply(evt, decision.Answer)
 }
 
-// handleOwnerCommand enforces two-tier auth (T-03-02-01, T-03-02-02) and dispatches
-// !pause / !resume commands to ownercommands.Handle().
-//
-// Authorization order:
-//  1. Direct match: sender JID in listener.OwnerJIDs (fast path, no network call)
-//  2. Admin fallback: if listener.AllowAdminCommands is true, call GetGroupInfo and
-//     check whether the sender is a group admin/superadmin (D-06, D-09)
-//
-// Unauthorized senders are silently dropped at debug level (T-03-02-05).
-// Authorized commands trigger ownercommands.Handle() and launch sendCommandAck() as a goroutine.
-func (a *Adapter) handleOwnerCommand(evt *events.Message, snap *config.Snapshot, listener *config.ResolvedListener, cmd string) {
-	// senderRaw is the JID as reported by whatsmeow: phone JID on legacy clients,
-	// LID (e.g. 124068804186353@lid) on modern clients using LID addressing.
-	senderRaw := evt.Info.Sender.ToNonAD().String()
+// ReplyLoop reads from outCh and sends WhatsApp replies.
+func (a *Adapter) ReplyLoop(ctx context.Context) {
+	reaper := time.NewTicker(30 * time.Second)
+	defer reaper.Stop()
 
-	// Tier 1: direct JID match (fast path — no network call).
-	authorized := false
-	for _, ownerJID := range listener.OwnerJIDs {
-		if ownerJID == senderRaw {
-			authorized = true
-			break
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case reply, ok := <-a.outCh:
+			if !ok {
+				return
+			}
+			go a.sendThreadedReply(reply)
+		case <-reaper.C:
+			a.prunePending()
 		}
 	}
-
-	// Modern WhatsApp clients use LID addressing in group messages. Operator configs
-	// store phone-number JIDs (e.g. 55119@s.whatsapp.net), not LIDs. When direct
-	// match fails, call GetGroupInfo once to resolve LID→phone and optionally check
-	// admin status. Both uses share the single network call (fail-closed on error).
-	senderPhone := "" // resolved phone JID, empty if resolution fails or not needed
-	if !authorized && (strings.HasSuffix(senderRaw, "@lid") || listener.AllowAdminCommands) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		groupInfo, err := a.client.GetGroupInfo(ctx, evt.Info.Chat)
-		if err != nil {
-			slog.Warn("GetGroupInfo failed for owner command auth",
-				"err", err,
-				"group_jid", evt.Info.Chat.String(),
-			)
-			// fail-closed: cannot verify identity without group info
-		} else {
-			// Resolve LID → phone JID via participant list.
-			for _, p := range groupInfo.Participants {
-				if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderRaw {
-					senderPhone = p.JID.ToNonAD().String()
-					break
-				}
-			}
-
-			// Retry owner check with resolved phone JID.
-			if senderPhone != "" {
-				for _, ownerJID := range listener.OwnerJIDs {
-					if ownerJID == senderPhone {
-						authorized = true
-						break
-					}
-				}
-			}
-
-			// Tier 2: admin check (AllowAdminCommands — T-03-02-02).
-			if !authorized && listener.AllowAdminCommands {
-				checkJID := senderPhone
-				if checkJID == "" {
-					checkJID = senderRaw
-				}
-				for _, p := range groupInfo.Participants {
-					if !p.IsAdmin && !p.IsSuperAdmin {
-						continue
-					}
-					if p.JID.ToNonAD().String() == checkJID {
-						authorized = true
-						break
-					}
-					if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderRaw {
-						authorized = true
-						break
-					}
-				}
-			}
-		}
-	}
-
-	logJID := senderRaw
-	if senderPhone != "" {
-		logJID = senderPhone
-	}
-
-	if !authorized {
-		slog.Debug("owner command denied",
-			"event", "dispatch",
-			"reason", "owner_command_denied",
-			"sender_jid", logJID,
-			"cmd", cmd,
-		)
-		return
-	}
-
-	ackText := ownercommands.Handle(cmd, a.ks)
-	slog.Info("owner command executed",
-		"event", "dispatch",
-		"reason", "owner_command",
-		"sender_jid", logJID,
-		"cmd", cmd,
-		"ack", ackText,
-	)
-	go a.sendCommandAck(evt, ackText)
 }
 
-// sendCommandAck sends a threaded reply acknowledging an owner command.
-// Unlike sendReply, there is no jitter — command acknowledgements should be immediate (D-11).
-// This must be called from a goroutine — never from the event handler directly.
-func (a *Adapter) sendCommandAck(evt *events.Message, ackText string) {
+// prunePending deletes entries from the pending map that are older than 60 seconds.
+func (a *Adapter) prunePending() {
+	cutoff := time.Now().Add(-60 * time.Second)
+	a.pending.Range(func(key, value interface{}) bool {
+		evt, ok := value.(*events.Message)
+		if ok && evt.Info.Timestamp.Before(cutoff) {
+			a.pending.Delete(key)
+		}
+		return true
+	})
+}
+
+// sendThreadedReply sends a threaded WhatsApp reply. Applies jitter for
+// regular replies; sends immediately for command acks.
+func (a *Adapter) sendThreadedReply(reply domain.OutboundReply) {
+	if !reply.IsCommandAck {
+		jitter := time.Duration(2+rand.IntN(7)) * time.Second
+		time.Sleep(jitter)
+	}
+
+	// Look up original event for full reply threading (QuotedMessage preview).
+	var quotedMsg *waE2E.Message
+	var participant string
+	if val, ok := a.pending.LoadAndDelete(reply.InReplyTo); ok {
+		evt := val.(*events.Message)
+		quotedMsg = evt.Message
+		participant = evt.Info.Sender.String()
+	} else {
+		slog.Warn("original event not found for reply", "msg_id", reply.InReplyTo)
+		participant = reply.SenderJID // fallback
+	}
+
 	msg := &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: proto.String(ackText),
+			Text: proto.String(reply.Answer),
 			ContextInfo: &waE2E.ContextInfo{
-				StanzaID:      proto.String(evt.Info.ID),
-				Participant:   proto.String(evt.Info.Sender.String()),
-				QuotedMessage: evt.Message,
+				StanzaID:      proto.String(reply.InReplyTo),
+				Participant:   proto.String(participant),
+				QuotedMessage: quotedMsg, // nil if not found — reply still threads
 			},
 		},
 	}
@@ -281,60 +161,33 @@ func (a *Adapter) sendCommandAck(evt *events.Message, ackText string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := a.client.SendMessage(ctx, evt.Info.Chat, msg)
+	chatJID, err := types.ParseJID(reply.ChatJID)
 	if err != nil {
-		slog.Error("failed to send command ack",
+		slog.Error(
+			"failed to parse chat JID for reply",
 			"event", "send_error",
-			"msg_id", evt.Info.ID,
+			"chat_jid", reply.ChatJID,
 			"err", err,
 		)
 		return
 	}
 
-	slog.Info("command ack sent",
-		"event", "reply_sent",
-		"msg_id", evt.Info.ID,
-		"ack", ackText,
-	)
-}
-
-// sendReply sends a threaded WhatsApp reply to the message that triggered the match.
-// It sleeps for a random 2-8s jitter before sending to appear more human (REPLY-04).
-// This must be called from a goroutine — never from the event handler directly.
-func (a *Adapter) sendReply(evt *events.Message, answer string) {
-	// Random 2-8s jitter (REPLY-04).
-	jitter := time.Duration(2+rand.IntN(7)) * time.Second
-	time.Sleep(jitter)
-
-	// Build threaded reply (REPLY-01): ExtendedTextMessage with ContextInfo.
-	msg := &waE2E.Message{
-		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: proto.String(answer),
-			ContextInfo: &waE2E.ContextInfo{
-				StanzaID:      proto.String(evt.Info.ID),
-				Participant:   proto.String(evt.Info.Sender.String()),
-				QuotedMessage: evt.Message,
-			},
-		},
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	_, err := a.client.SendMessage(ctx, evt.Info.Chat, msg)
+	_, err = a.client.SendMessage(ctx, chatJID, msg)
 	if err != nil {
-		slog.Error("failed to send reply",
+		slog.Error(
+			"failed to send reply",
 			"event", "send_error",
-			"msg_id", evt.Info.ID,
+			"msg_id", reply.InReplyTo,
 			"err", err,
 		)
 		return
 	}
 
-	slog.Info("reply sent",
+	slog.Info(
+		"reply sent",
 		"event", "reply_sent",
-		"msg_id", evt.Info.ID,
-		"jitter_ms", jitter.Milliseconds(),
+		"msg_id", reply.InReplyTo,
+		"is_command_ack", reply.IsCommandAck,
 	)
 }
 
@@ -360,16 +213,6 @@ func isBotMentioned(m *waE2E.Message, botJID, botLID string) bool {
 		}
 	}
 	return false
-}
-
-// findListener returns the ResolvedListener for the given group JID, or nil if not configured.
-func findListener(listeners []config.ResolvedListener, groupJID string) *config.ResolvedListener {
-	for i := range listeners {
-		if listeners[i].GroupJID == groupJID {
-			return &listeners[i]
-		}
-	}
-	return nil
 }
 
 // extractText returns the plain-text content of a proto message, or "" if the message

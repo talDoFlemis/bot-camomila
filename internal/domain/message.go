@@ -2,28 +2,38 @@
 // No external dependencies — stdlib only.
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
-// Message is a transport-agnostic inbound group message. No whatsmeow types appear here.
-// The whatsappadapter package is responsible for constructing Message values from
-// whatsmeow event types.
-type Message struct {
-	// ID is the WhatsApp message ID.
-	ID string
-	// GroupJID is the group the message was sent to (string form of the JID).
-	GroupJID string
-	// SenderJID is the sender's JID in non-AD form (no device suffix).
-	SenderJID string
-	// SenderPushName is the sender's display name (may be empty).
-	SenderPushName string
-	// Text is the plain text content of the message.
-	Text string
-	// QuotedBody is the plain text of the quoted message (empty if no quote).
-	QuotedBody string
-	// QuotedSenderJID is the JID of the quoted message's original sender (empty if no quote
-	// or if the quoted author is the bot itself, for quote-chain loop prevention).
+// InboundMessage is a transport-agnostic inbound group message.
+type InboundMessage struct {
+	ID              string
+	GroupJID        string
+	SenderJID       string
+	SenderPushName  string
+	Text            string
+	QuotedBody      string
 	QuotedSenderJID string
-	// Timestamp is when the message was sent.
-	Timestamp time.Time
+	Timestamp       time.Time
+	MentionedBot    bool
+	IsFromMe        bool
 }
 
+// OutboundReply is the pipeline's instruction to send a threaded reply.
+type OutboundReply struct {
+	InReplyTo    string // original message ID (for threading)
+	ChatJID      string // where to send the reply
+	SenderJID    string // original sender's JID (for ContextInfo.Participant)
+	Answer       string // final text (variables already substituted)
+	MatcherName  string // which matcher fired (empty for command acks)
+	MatchedWord  string // the input token that matched (empty for command acks)
+	IsCommandAck bool   // true = send immediately (no jitter)
+}
+
+// AdminChecker resolves whether a sender is a group admin.
+// The transport adapter implements this; the pipeline calls it only when needed.
+type AdminChecker interface {
+	IsGroupAdmin(ctx context.Context, groupJID, senderJID string) (bool, error)
+}

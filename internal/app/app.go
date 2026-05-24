@@ -10,6 +10,7 @@ import (
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
 	"github.com/taldoflemis/bot-camomila/internal/cooldown"
+	"github.com/taldoflemis/bot-camomila/internal/domain"
 	"github.com/taldoflemis/bot-camomila/internal/killswitch"
 	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 	"github.com/taldoflemis/bot-camomila/internal/whatsappadapter"
@@ -48,33 +49,45 @@ func Run(ctx context.Context, configPath string, startTime time.Time, levelVar *
 		}
 	}()
 
-	// Step 4 — Create Phase 2 pipeline components.
+	// Step 4 — Initialize channels.
+	inCh := make(chan domain.InboundMessage, 64)
+	outCh := make(chan domain.OutboundReply, 64)
+
+	// Step 5 — Create WhatsApp adapter.
+	// adapter.New() records startTime internally (time.Now() in New).
+	// The startTime parameter to Run() is for app-level logging only.
+	adapter := whatsappadapter.New(cfgStore, inCh, outCh)
+
+	// Step 6 — Create and start Phase 2 pipeline components.
 	ks := killswitch.New()
 	cd := cooldown.NewTracker(nil) // nil = real clock (time.Now)
 	rl := pipeline.NewRateLimiter(nil)
-	pipe := pipeline.New(ks, cd, rl, nil) // nil clock = time.Now
+	pipe := pipeline.New(cfgStore, adapter, ks, cd, rl, nil) // adapter implements domain.AdminChecker
 
 	// Start cooldown reaper in background (cleanup every 5 minutes).
 	go cd.StartReaper(ctx, 5*time.Minute)
+
+	// Start pipeline actor loop.
+	go pipe.Run(ctx, inCh, outCh)
 
 	slog.Info("pipeline created",
 		"kill_switch", "active",
 		"cooldown_reaper_interval", "5m",
 	)
 
-	// Step 5 — Create and start the WhatsApp adapter.
-	// adapter.New() records startTime internally (time.Now() in New).
-	// The startTime parameter to Run() is for app-level logging only.
-	adapter := whatsappadapter.New(cfgStore, pipe, ks)
+	// Step 7 — Start adapter ReplyLoop.
+	go adapter.ReplyLoop(ctx)
+
+	// Step 8 — Start adapter connection.
 	if err := adapter.Start(ctx); err != nil {
 		return fmt.Errorf("whatsapp adapter start failed: %w", err)
 	}
 
-	// Step 6 — Block on context until shutdown signal.
+	// Step 9 — Block on context until shutdown signal.
 	<-ctx.Done()
 	slog.Info("shutdown signal received; disconnecting")
 
-	// Step 7 — Graceful shutdown.
+	// Step 10 — Graceful shutdown.
 	// Order is mandatory: adapter.Disconnect() (calls client.Disconnect then db.Close).
 	// NEVER call Disconnect() from inside an event handler — deadlock.
 	adapter.Disconnect()
