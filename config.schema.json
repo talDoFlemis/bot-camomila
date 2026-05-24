@@ -30,6 +30,11 @@
             },
             "default": []
           },
+          "allow_admin_commands": {
+            "type": "boolean",
+            "description": "When true, WhatsApp group admins and super-admins may also issue !pause / !resume commands in addition to owner_jids.",
+            "default": false
+          },
           "matchers": {
             "type": "array",
             "description": "Ordered list of matcher names (must reference a name defined in the top-level matchers array). First match wins. At least one required.",
