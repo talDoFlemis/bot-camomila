@@ -69,7 +69,7 @@ updated: "2026-05-24T00:00:00Z"
 - Commands from non-owner JIDs are silently ignored (debug log only).
 - Hot-reload does not change the kill switch state.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1**
@@ -78,7 +78,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Adapter ks wiring + handleOwnerCommand + sendCommandAck
+- [x] 03-02-PLAN.md — Adapter ks wiring + handleOwnerCommand + sendCommandAck
 
 ---
 
@@ -106,7 +106,7 @@ Plans:
 |-------|--------|-------|-----------|
 | 1. Session & Config Foundations | ✅ | 4/4 | 2026-05-23 |
 | 2. Matcher Pipeline & Safe Dispatch | ✅ | 6/6 | 2026-05-23 |
-| 3. Owner Commands & Operability | 1/2 | In Progress|  |
+| 3. Owner Commands & Operability | 2/2 | Complete   | 2026-05-24 |
 | 4. Docker Packaging & Deploy | ⬜ | 0/0 | — |
 
 ---
