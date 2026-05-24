@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
+	"github.com/taldoflemis/bot-camomila/internal/ownercommands"
 	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 )
 
@@ -104,6 +106,14 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 		return
 	}
 
+	// Command short-circuit — owner commands (!pause / !resume) are handled before
+	// the pipeline so that !resume works even when the kill switch is active (OWNER-01).
+	normalized := strings.TrimSpace(strings.ToLower(text))
+	if normalized == "!pause" || normalized == "!resume" {
+		a.handleOwnerCommand(evt, snap, listener, normalized)
+		return
+	}
+
 	// Construct pipeline.Message with all Phase 2 fields.
 	quotedBody, quotedSender := extractQuotedText(evt.Message, a.botJID)
 	msg := pipeline.Message{
@@ -139,6 +149,114 @@ func (a *Adapter) handleMessage(evt *events.Message) {
 	// Send reply in a goroutine with jitter (REPLY-04).
 	// Do NOT block the event handler — whatsmeow holds a dispatch lock.
 	go a.sendReply(evt, decision.Answer)
+}
+
+// handleOwnerCommand enforces two-tier auth (T-03-02-01, T-03-02-02) and dispatches
+// !pause / !resume commands to ownercommands.Handle().
+//
+// Authorization order:
+//  1. Direct match: sender JID in listener.OwnerJIDs (fast path, no network call)
+//  2. Admin fallback: if listener.AllowAdminCommands is true, call GetGroupInfo and
+//     check whether the sender is a group admin/superadmin (D-06, D-09)
+//
+// Unauthorized senders are silently dropped at debug level (T-03-02-05).
+// Authorized commands trigger ownercommands.Handle() and launch sendCommandAck() as a goroutine.
+func (a *Adapter) handleOwnerCommand(evt *events.Message, snap *config.Snapshot, listener *config.ResolvedListener, cmd string) {
+	senderJID := evt.Info.Sender.ToNonAD().String()
+
+	// Tier 1: direct JID match against owner allowlist.
+	authorized := false
+	for _, ownerJID := range listener.OwnerJIDs {
+		if ownerJID == senderJID {
+			authorized = true
+			break
+		}
+	}
+
+	// Tier 2: optional group-admin lookup (fail-closed on error — T-03-02-02).
+	if !authorized && listener.AllowAdminCommands {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		groupInfo, err := a.client.GetGroupInfo(ctx, evt.Info.Chat)
+		if err != nil {
+			slog.Warn("GetGroupInfo failed for admin check",
+				"err", err,
+				"group_jid", evt.Info.Chat.String(),
+			)
+			// fail-closed: do NOT set authorized = true on error
+		} else {
+			for _, p := range groupInfo.Participants {
+				if !p.IsAdmin && !p.IsSuperAdmin {
+					continue
+				}
+				if p.JID.ToNonAD().String() == senderJID {
+					authorized = true
+					break
+				}
+				// Also compare LID when non-empty (newer WhatsApp clients — RESEARCH.md Open Question 1).
+				if !p.LID.IsEmpty() && p.LID.ToNonAD().String() == senderJID {
+					authorized = true
+					break
+				}
+			}
+		}
+	}
+
+	if !authorized {
+		slog.Debug("owner command denied",
+			"event", "dispatch",
+			"reason", "owner_command_denied",
+			"sender_jid", senderJID,
+			"cmd", cmd,
+		)
+		return
+	}
+
+	ackText := ownercommands.Handle(cmd, a.ks)
+	slog.Info("owner command executed",
+		"event", "dispatch",
+		"reason", "owner_command",
+		"sender_jid", senderJID,
+		"cmd", cmd,
+		"ack", ackText,
+	)
+	go a.sendCommandAck(evt, ackText)
+}
+
+// sendCommandAck sends a threaded reply acknowledging an owner command.
+// Unlike sendReply, there is no jitter — command acknowledgements should be immediate (D-11).
+// This must be called from a goroutine — never from the event handler directly.
+func (a *Adapter) sendCommandAck(evt *events.Message, ackText string) {
+	msg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(ackText),
+			ContextInfo: &waE2E.ContextInfo{
+				StanzaID:      proto.String(evt.Info.ID),
+				Participant:   proto.String(evt.Info.Sender.String()),
+				QuotedMessage: evt.Message,
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := a.client.SendMessage(ctx, evt.Info.Chat, msg)
+	if err != nil {
+		slog.Error("failed to send command ack",
+			"event", "send_error",
+			"msg_id", evt.Info.ID,
+			"err", err,
+		)
+		return
+	}
+
+	slog.Info("command ack sent",
+		"event", "reply_sent",
+		"msg_id", evt.Info.ID,
+		"ack", ackText,
+	)
 }
 
 // sendReply sends a threaded WhatsApp reply to the message that triggered the match.

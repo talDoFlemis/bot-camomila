@@ -16,6 +16,7 @@ import (
 	"modernc.org/sqlite"
 
 	"github.com/taldoflemis/bot-camomila/internal/config"
+	"github.com/taldoflemis/bot-camomila/internal/killswitch"
 	"github.com/taldoflemis/bot-camomila/internal/pipeline"
 )
 
@@ -33,6 +34,7 @@ type Adapter struct {
 	db        *sql.DB
 	cfg       *config.Store
 	pipeline  *pipeline.Pipeline
+	ks        *killswitch.Switch  // kill switch shared with pipeline; never re-created on hot-reload (OWNER-06)
 	cancel    context.CancelFunc // stored to signal shutdown from event handler (never call Disconnect from handler)
 	startTime time.Time          // recorded in New() before any Connect; used for HistorySync flood filter (D-07)
 	botJID    string             // bot's own JID in non-AD form; set after Connect() for quote-chain prevention
@@ -42,10 +44,11 @@ type Adapter struct {
 // New returns an uninitialised Adapter. startTime is recorded here — before any Connect
 // call — so that the HistorySync flood filter (D-07) can drop all replayed messages
 // predating bot startup.
-func New(cfg *config.Store, pipe *pipeline.Pipeline) *Adapter {
+func New(cfg *config.Store, pipe *pipeline.Pipeline, ks *killswitch.Switch) *Adapter {
 	return &Adapter{
 		cfg:       cfg,
 		pipeline:  pipe,
+		ks:        ks,
 		startTime: time.Now(),
 	}
 }
