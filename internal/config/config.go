@@ -47,9 +47,10 @@ type MentionMatcherConfig struct {
 
 // ListenerConfig binds a WhatsApp group to a set of matchers.
 type ListenerConfig struct {
-	GroupJID  string   `yaml:"group_jid"`
-	OwnerJIDs []string `yaml:"owner_jids"`
-	Matchers  []string `yaml:"matchers"` // ordered list of MatcherConfig.Name references
+	GroupJID           string   `yaml:"group_jid"`
+	OwnerJIDs          []string `yaml:"owner_jids"`
+	AllowAdminCommands bool     `yaml:"allow_admin_commands"` // when true, group admins may also issue !pause / !resume
+	Matchers           []string `yaml:"matchers"`             // ordered list of MatcherConfig.Name references
 }
 
 // LimitsConfig holds behavioral rate and quiet-hours limits.
@@ -98,9 +99,10 @@ type Snapshot struct {
 
 // ResolvedListener is a listener with its matchers fully resolved.
 type ResolvedListener struct {
-	GroupJID  string
-	OwnerJIDs []string
-	Matchers  []ResolvedMatcher
+	GroupJID           string
+	OwnerJIDs          []string
+	AllowAdminCommands bool // propagated from ListenerConfig; false by default
+	Matchers           []ResolvedMatcher
 }
 
 // ResolvedMatcher is a matcher with its answer cluster already resolved.
