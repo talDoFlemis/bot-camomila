@@ -24,6 +24,63 @@ go run ./cmd/bot --config my-config.yaml
 
 On first run, a QR code is printed to stdout. Scan it with WhatsApp on your phone (Linked Devices → Link a Device). The session is persisted to the SQLite file configured in `db.path` — subsequent runs resume without re-scanning.
 
+## How it works
+
+The bot uses an Actor-Model architecture to decouple WhatsApp network events from internal logic. When a message arrives, it passes through a series of strictly ordered gates in the pipeline:
+
+```mermaid
+flowchart TD
+    %% Entities
+    WA((WhatsApp))
+    Adapter[WhatsApp Adapter]
+    Pipe[Pipeline Actor]
+    
+    %% Flow
+    WA -->|New Message| Adapter
+    Adapter -->|Basic checks| C1{Valid?}
+    C1 -->|No| Drop[Drop]
+    C1 -->|Yes| InCh((inCh))
+    
+    InCh -->|Pull| Pipe
+    
+    %% Gates
+    Pipe --> G0{1. Command?}
+    G0 -->|Yes| Toggle[Toggle Switch]
+    Toggle --> OutCh((outCh))
+    
+    G0 -->|No| G1{2. Kill Switch?}
+    G1 -->|Paused| Drop
+    
+    G1 -->|Active| G2{3. Quiet Hours?}
+    G2 -->|Yes| Drop
+    
+    G2 -->|No| G3{4. Matcher?}
+    G3 -->|No match| Drop
+    
+    G3 -->|Matched| G4{5. Cooldown?}
+    G4 -->|Active| Drop
+    
+    G4 -->|Passed| G5{6. Rate Cap?}
+    G5 -->|Exceeded| Drop
+    
+    G5 -->|Passed| Pick[Pick random answer]
+    Pick --> OutCh
+    
+    %% Outbound
+    OutCh -->|Pull| ReplyLoop[Adapter ReplyLoop]
+    ReplyLoop --> Jitter[Apply 2-5s Jitter]
+    Jitter --> WA
+```
+
+### Pipeline explanation
+
+1. **Transport Gates (Adapter)**: Ignores self-messages, non-text media, and history syncs. Valid text messages are pushed to `inCh`.
+2. **Command Gate**: Checks if an authorized owner or group admin sent `!pause` or `!resume`. If so, it toggles the kill switch and immediately queues an acknowledgment.
+3. **Kill Switch & Quiet Hours**: If the bot is paused manually or if the current time falls inside the configured `quiet_hours`, the message is silently dropped.
+4. **Matcher Gate**: Evaluates the message text (and quoted text, if any) against the `levenshtein` and `mention` rules for that specific group.
+5. **Limits (Cooldown & Rate Cap)**: Ensures the triggering user isn't spamming (user cooldown), the specific matcher hasn't fired too recently (matcher cooldown), and the global hourly/minute rate caps aren't exceeded.
+6. **ReplyLoop**: Approved replies are sent to `outCh`. A dedicated goroutine picks them up, applies a human-like 2 to 5-second typing delay (jitter), and dispatches the final threaded reply to WhatsApp.
+
 ## Config
 
 ```yaml
