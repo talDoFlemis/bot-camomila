@@ -140,8 +140,8 @@ func (a *Adapter) sendThreadedReply(reply domain.OutboundReply) {
 	var participant string
 	if val, ok := a.pending.LoadAndDelete(reply.InReplyTo); ok {
 		evt := val.(*events.Message)
-		quotedMsg = evt.Message
-		participant = evt.Info.Sender.String()
+		quotedMsg = textOnlyQuote(evt.Message)
+		participant = evt.Info.Sender.ToNonAD().String()
 	} else {
 		slog.Warn("original event not found for reply", "msg_id", reply.InReplyTo)
 		participant = reply.SenderJID // fallback
@@ -260,4 +260,21 @@ func extractQuotedText(m *waE2E.Message, botJID string) (body string, senderJID 
 	// Extract text from the quoted message.
 	quotedText := extractText(ci.QuotedMessage)
 	return quotedText, participant
+}
+
+// textOnlyQuote returns a minimal text-only Message proto suitable for use as a
+// QuotedMessage. It strips all ContextInfo (MentionedJID, Participant, nested
+// quotes, etc.) so the bot's reply never re-tags or re-notifies people who were
+// referenced in the original message's context chain.
+func textOnlyQuote(m *waE2E.Message) *waE2E.Message {
+	if m == nil {
+		return nil
+	}
+	text := extractText(m)
+	if text == "" {
+		return m // non-text message — pass through as-is
+	}
+	return &waE2E.Message{
+		Conversation: proto.String(text),
+	}
 }
